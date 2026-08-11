@@ -12,7 +12,7 @@ set SERVER_IP=127.0.0.1
 set SERVER_PORT=2222
 
 :: --- Direktori aplikasi di server ---
-set "REMOTE_DIR=C:\laragon\www\spt"
+set "REMOTE_DIR=C:\laragon\www\spt-php"
 
 :: --- Branch yang di-deploy ---
 set BRANCH=main

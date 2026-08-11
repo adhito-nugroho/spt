@@ -13,7 +13,7 @@ set SERVER_PORT=2222
 
 :: --- Tempat clone di server ---
 set "REMOTE_PARENT=C:\laragon\www"
-set "REMOTE_DIR=C:\laragon\www\spt"
+set "REMOTE_DIR=C:\laragon\www\spt-php"
 set BRANCH=main
 
 :: --- Path binary di server ---
