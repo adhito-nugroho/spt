@@ -377,49 +377,52 @@ try {
 
 <div class="space-y-6">
     <div class="flex flex-col md:flex-row justify-between items-center gap-4">
-        <h2 class="text-2xl font-bold text-slate-800">Kelola Template Word</h2>
-        <button onclick="openModal('uploadTemplateModal')" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-colors shadow-sm">
+        <div>
+            <h1 class="page-header-title">Kelola Template Word</h1>
+            <p class="page-header-sub">Template dokumen .docx untuk pemuatan surat tugas</p>
+        </div>
+        <button onclick="openModal('uploadTemplateModal')" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-colors shadow-sm text-sm font-medium">
             <i class='bx bx-upload'></i> Upload Template
         </button>
     </div>
 
     <!-- Info Box -->
-    <div class="bg-blue-50 border border-blue-200 rounded-xl p-4">
+    <div class="card p-4 bg-blue-50/50 border-blue-100 text-blue-900">
         <div class="flex items-start gap-3">
             <i class='bx bx-info-circle text-blue-600 text-xl mt-0.5'></i>
-            <div class="text-sm text-blue-800">
-                <p class="font-semibold mb-1">Informasi Template</p>
-                <p>Upload template Word (.docx atau .doc) yang akan digunakan untuk generate surat tugas. Pilih kategori template sesuai jumlah pegawai dan <strong>tipe surat</strong> (Umum untuk ASN biasa, Penyuluh untuk penyuluh kehutanan). Template harus menggunakan placeholder seperti <code class="bg-blue-100 px-1 rounded">${nomor_surat}</code>, <code class="bg-blue-100 px-1 rounded">${tanggal_surat}</code>, dll. Sistem akan otomatis memilih template yang sesuai saat generate surat.</p>
+            <div class="text-sm">
+                <p class="font-semibold text-blue-950 mb-1">Informasi Template</p>
+                <p class="text-blue-800">Upload template Word (.docx atau .doc) yang akan digunakan untuk generate surat tugas. Pilih kategori template sesuai jumlah pegawai dan <strong>tipe surat</strong> (Umum untuk ASN biasa, Penyuluh untuk penyuluh kehutanan). Template harus menggunakan placeholder seperti <code class="bg-blue-100 px-1 rounded">${nomor_surat}</code>, <code class="bg-blue-100 px-1 rounded">${tanggal_surat}</code>, dll. Sistem akan otomatis memilih template yang sesuai saat generate surat.</p>
             </div>
         </div>
     </div>
 
     <!-- Daftar Template -->
-    <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+    <div class="card overflow-hidden">
         <?php if (count($templates) > 0): ?>
             <div class="overflow-x-auto">
-                <table class="w-full text-left border-collapse">
+                <table class="w-full text-left table-premium">
                     <thead>
-                        <tr class="bg-slate-50 text-slate-600 text-sm uppercase tracking-wider">
-                            <th class="px-6 py-4 font-semibold border-b border-slate-100">No</th>
-                            <th class="px-6 py-4 font-semibold border-b border-slate-100">Nama Template</th>
-                            <th class="px-6 py-4 font-semibold border-b border-slate-100">Kategori</th>
-                            <th class="px-6 py-4 font-semibold border-b border-slate-100">Tipe</th>
-                            <th class="px-6 py-4 font-semibold border-b border-slate-100">File</th>
-                            <th class="px-6 py-4 font-semibold border-b border-slate-100">Ukuran</th>
-                            <th class="px-6 py-4 font-semibold border-b border-slate-100">Status</th>
-                            <th class="px-6 py-4 font-semibold border-b border-slate-100">Deskripsi</th>
-                            <th class="px-6 py-4 font-semibold border-b border-slate-100 text-right">Aksi</th>
+                        <tr>
+                            <th style="width: 50px;">No</th>
+                            <th>Nama Template</th>
+                            <th>Kategori</th>
+                            <th>Tipe</th>
+                            <th>File</th>
+                            <th>Ukuran</th>
+                            <th>Status</th>
+                            <th>Deskripsi</th>
+                            <th class="text-right">Aksi</th>
                         </tr>
                     </thead>
-                    <tbody class="divide-y divide-slate-100">
+                    <tbody>
                         <?php $no = 1; foreach ($templates as $template): ?>
-                            <tr class="hover:bg-slate-50 transition-colors">
-                                <td class="px-6 py-4 text-sm text-slate-600"><?php echo $no++; ?></td>
-                                <td class="px-6 py-4 text-sm font-medium text-slate-900">
+                            <tr>
+                                <td class="text-gray-500"><?php echo $no++; ?></td>
+                                <td class="font-medium text-gray-900">
                                     <?php echo htmlspecialchars($template['nama']); ?>
                                 </td>
-                                <td class="px-6 py-4 text-sm">
+                                <td>
                                     <?php
                                     $kategori_labels = [
                                         '1_pegawai' => '1 Pegawai',

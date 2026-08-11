@@ -334,116 +334,113 @@ $all_pegawai = $stmt_pegawai->fetchAll();
 <div class="space-y-6">
     <div class="flex flex-col md:flex-row justify-between items-center gap-4">
         <div>
-            <h2 class="text-2xl font-bold text-slate-800">Penanda Tangan</h2>
-            <p class="text-sm text-slate-500 mt-1">Kelola data pejabat penanda tangan surat tugas</p>
+            <h1 class="page-header-title">Penanda Tangan</h1>
+            <p class="page-header-sub">Kelola data pejabat penanda tangan surat tugas</p>
         </div>
-        <button onclick="openModal('addModal')" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-colors shadow-sm">
+        <button onclick="openModal('addModal')" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-colors shadow-sm text-sm font-medium">
             <i class='bx bx-plus'></i> Tambah Penanda Tangan
         </button>
     </div>
 
     <!-- Info Card -->
-    <div class="bg-gradient-to-r from-indigo-50 to-blue-50 rounded-xl border border-indigo-100 p-4">
+    <div class="card p-4 bg-indigo-50/50 border-indigo-100 text-indigo-900">
         <div class="flex items-start gap-3">
-            <div class="flex-shrink-0 bg-indigo-100 rounded-lg p-2">
-                <i class='bx bx-info-circle text-indigo-600 text-xl'></i>
+            <div class="flex-shrink-0 bg-indigo-100 rounded-lg p-2 text-indigo-600">
+                <i class='bx bx-info-circle text-xl'></i>
             </div>
             <div>
-                <h4 class="text-sm font-semibold text-indigo-800 mb-1">Tentang Penanda Tangan</h4>
-                <p class="text-sm text-indigo-700 mb-2">
+                <h4 class="text-sm font-semibold text-indigo-950 mb-1">Tentang Penanda Tangan</h4>
+                <p class="text-xs text-indigo-800 mb-2">
                     Penanda tangan yang ditandai sebagai <strong>Default</strong> akan otomatis terpilih saat membuat surat tugas baru.
                 </p>
-                <p class="text-sm text-indigo-700 mb-1 font-semibold">Placeholder dasar:</p>
-                <p class="text-sm text-indigo-700 mb-2">
-                    <code class="bg-indigo-100 px-1.5 py-0.5 rounded text-xs font-mono">${penandatangan_nama}</code>, 
-                    <code class="bg-indigo-100 px-1.5 py-0.5 rounded text-xs font-mono">${penandatangan_nip}</code>, 
-                    <code class="bg-indigo-100 px-1.5 py-0.5 rounded text-xs font-mono">${penandatangan_pangkat}</code>
+                <p class="text-xs text-indigo-800 mb-1 font-semibold">Placeholder dasar:</p>
+                <p class="text-xs text-indigo-800 mb-2">
+                    <code class="bg-indigo-100/80 px-1.5 py-0.5 rounded font-mono">${penandatangan_nama}</code>, 
+                    <code class="bg-indigo-100/80 px-1.5 py-0.5 rounded font-mono">${penandatangan_nip}</code>, 
+                    <code class="bg-indigo-100/80 px-1.5 py-0.5 rounded font-mono">${penandatangan_pangkat}</code>
                 </p>
-                <p class="text-sm text-indigo-700 mb-1 font-semibold">Placeholder otomatis (Kepala vs A.n):</p>
-                <p class="text-sm text-indigo-700">
-                    <code class="bg-indigo-100 px-1.5 py-0.5 rounded text-xs font-mono">${penandatangan_header_jabatan}</code> → Otomatis: jabatan (Kepala) atau "A.n [jabatan atasan]" (A.n)<br>
-                    <code class="bg-indigo-100 px-1.5 py-0.5 rounded text-xs font-mono">${penandatangan_sub_jabatan}</code> → Kosong (Kepala) atau jabatan penandatangan (A.n)
+                <p class="text-xs text-indigo-800 mb-1 font-semibold">Placeholder otomatis (Kepala vs A.n):</p>
+                <p class="text-xs text-indigo-800">
+                    <code class="bg-indigo-100/80 px-1.5 py-0.5 rounded font-mono">${penandatangan_header_jabatan}</code> → Otomatis: jabatan (Kepala) atau "A.n [jabatan atasan]" (A.n)<br>
+                    <code class="bg-indigo-100/80 px-1.5 py-0.5 rounded font-mono">${penandatangan_sub_jabatan}</code> → Kosong (Kepala) atau jabatan penandatangan (A.n)
                 </p>
-                <p class="text-sm text-indigo-700 mt-2 mb-1 font-semibold">Placeholder gambar tanda tangan:</p>
-                <p class="text-sm text-indigo-700">
-                    <code class="bg-indigo-100 px-1.5 py-0.5 rounded text-xs font-mono">${tanda_tangan}</code> → Gambar tanda tangan PNG (disisipkan otomatis ke template)
+                <p class="text-xs text-indigo-800 mt-2 mb-1 font-semibold">Placeholder gambar tanda tangan:</p>
+                <p class="text-xs text-indigo-800">
+                    <code class="bg-indigo-100/80 px-1.5 py-0.5 rounded font-mono">${tanda_tangan}</code> → Gambar tanda tangan PNG (disisipkan otomatis ke template)
                 </p>
             </div>
         </div>
     </div>
 
     <!-- Tabel Penanda Tangan -->
-    <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+    <div class="card overflow-hidden">
         <?php if (count($penandatangan_list) > 0): ?>
             <div class="overflow-x-auto">
-                <table class="w-full text-left border-collapse">
+                <table class="w-full text-left table-premium">
                     <thead>
-                        <tr class="bg-slate-50 text-slate-600 text-sm uppercase tracking-wider">
-                            <th class="px-6 py-4 font-semibold border-b border-slate-100">No</th>
-                            <th class="px-6 py-4 font-semibold border-b border-slate-100">Nama</th>
-                            <th class="px-6 py-4 font-semibold border-b border-slate-100">NIP</th>
-                            <th class="px-6 py-4 font-semibold border-b border-slate-100">Pangkat</th>
-                            <th class="px-6 py-4 font-semibold border-b border-slate-100">Jabatan</th>
-                            <th class="px-6 py-4 font-semibold border-b border-slate-100">Tanda Tangan</th>
-                            <th class="px-6 py-4 font-semibold border-b border-slate-100">Status</th>
-                            <th class="px-6 py-4 font-semibold border-b border-slate-100 text-right">Aksi</th>
+                        <tr>
+                            <th style="width: 50px;">No</th>
+                            <th>Nama</th>
+                            <th>NIP</th>
+                            <th>Pangkat</th>
+                            <th>Jabatan</th>
+                            <th>Tanda Tangan</th>
+                            <th>Status</th>
+                            <th class="text-right">Aksi</th>
                         </tr>
                     </thead>
-                    <tbody class="divide-y divide-slate-100">
+                    <tbody>
                         <?php $no = 1; foreach ($penandatangan_list as $pt): ?>
-                            <tr class="hover:bg-slate-50 transition-colors <?php echo !$pt['aktif'] ? 'opacity-50' : ''; ?>">
-                                <td class="px-6 py-4 text-sm text-slate-600"><?php echo $no++; ?></td>
-                                <td class="px-6 py-4">
+                            <tr class="<?php echo !$pt['aktif'] ? 'opacity-50' : ''; ?>">
+                                <td class="text-gray-500"><?php echo $no++; ?></td>
+                                <td>
                                     <div class="flex items-center gap-2 flex-wrap">
-                                        <span class="text-sm font-medium text-slate-900"><?php echo htmlspecialchars($pt['nama']); ?></span>
+                                        <span class="font-medium text-gray-900"><?php echo htmlspecialchars($pt['nama']); ?></span>
                                         <?php if ($pt['is_default']): ?>
-                                            <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-800">
+                                            <span class="badge badge-emerald">
                                                 <i class='bx bx-check-circle mr-1'></i> Default
                                             </span>
                                         <?php endif; ?>
                                         <?php
                                         $is_kpl = isset($pt['is_kepala']) ? $pt['is_kepala'] : 1;
                                         if ($is_kpl): ?>
-                                            <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                                            <span class="badge badge-blue">
                                                 <i class='bx bx-crown mr-1'></i> Kepala
                                             </span>
                                         <?php else: ?>
-                                            <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800">
+                                            <span class="badge badge-amber">
                                                 <i class='bx bx-user mr-1'></i> A.n
                                             </span>
                                         <?php endif; ?>
                                     </div>
                                 </td>
-                                <td class="px-6 py-4 text-sm font-mono text-slate-600"><?php echo htmlspecialchars($pt['nip']); ?></td>
-                                <td class="px-6 py-4 text-sm text-slate-600"><?php echo htmlspecialchars($pt['pangkat'] ?? '-'); ?></td>
-                                <td class="px-6 py-4 text-sm text-slate-600">
+                                <td class="font-mono text-gray-600"><?php echo htmlspecialchars($pt['nip']); ?></td>
+                                <td class="text-gray-600"><?php echo htmlspecialchars($pt['pangkat'] ?? '-'); ?></td>
+                                <td class="text-gray-600">
                                     <?php echo htmlspecialchars($pt['jabatan']); ?>
                                     <?php if (isset($pt['is_kepala']) && !$pt['is_kepala'] && !empty($pt['jabatan_atasan'])): ?>
                                         <br><span class="text-xs text-amber-600 italic">A.n <?php echo htmlspecialchars($pt['jabatan_atasan']); ?></span>
                                     <?php endif; ?>
                                 </td>
-                                <td class="px-6 py-4">
+                                <td>
                                     <?php if (!empty($pt['tanda_tangan'])): ?>
-                                        <div class="relative group">
+                                        <div class="relative group inline-block">
                                             <img src="../assets/img/tanda_tangan/<?php echo htmlspecialchars($pt['tanda_tangan']); ?>" 
                                                  alt="Tanda Tangan" 
-                                                 class="h-12 w-auto rounded border border-slate-200 bg-white p-1 cursor-pointer hover:shadow-md transition-shadow"
+                                                 class="h-10 w-auto rounded border border-gray-200 bg-white p-1 cursor-pointer hover:shadow-sm transition-shadow"
                                                  onclick="openPreviewTTD(this.src)">
-                                            <span class="absolute -top-1 -right-1 bg-green-500 rounded-full w-4 h-4 flex items-center justify-center">
-                                                <i class='bx bx-check text-white text-xs'></i>
-                                            </span>
                                         </div>
                                     <?php else: ?>
-                                        <span class="text-xs text-slate-400 italic">Belum ada</span>
+                                        <span class="text-xs text-gray-400 italic">Belum ada</span>
                                     <?php endif; ?>
                                 </td>
-                                <td class="px-6 py-4">
+                                <td>
                                     <?php if ($pt['aktif']): ?>
-                                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                                        <span class="badge badge-green">
                                             <i class='bx bx-check mr-1'></i> Aktif
                                         </span>
                                     <?php else: ?>
-                                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-600">
+                                        <span class="badge badge-gray">
                                             <i class='bx bx-x mr-1'></i> Nonaktif
                                         </span>
                                     <?php endif; ?>

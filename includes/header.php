@@ -26,106 +26,116 @@
     <!-- Chart.js -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
+    <!-- Google Fonts: Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <!-- SIPENSURAT Design System -->
+    <link rel="stylesheet" href="../assets/css/app.css">
+
     <script>
         tailwind.config = {
             theme: {
                 extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+                    },
                     colors: {
-                        primary: '#2c3e50',
-                        secondary: '#34495e',
+                        primary: '#4f46e5',
+                        'primary-light': '#eef2ff',
                     }
                 }
             }
         }
     </script>
 </head>
-<body class="bg-slate-50 font-sans text-slate-800 antialiased">
+<body class="bg-gray-50 font-sans text-gray-900 antialiased">
 
     <div class="flex h-screen overflow-hidden">
         <!-- Sidebar -->
-        <aside class="w-64 bg-white border-r border-slate-200 hidden md:flex flex-col z-10">
-            <div class="h-16 flex items-center px-6 border-b border-slate-200">
-                <a href="../" class="flex items-center gap-2 text-indigo-600 font-bold text-xl">
+        <aside class="w-64 bg-white border-r border-gray-200 hidden md:flex flex-col z-10">
+            <div class="h-16 flex items-center px-6 border-b border-gray-100">
+                <a href="../" class="flex items-center gap-2 text-indigo-600 font-bold text-xl tracking-tight">
                     <i class='bx bxs-file-doc text-2xl'></i>
                     <span>SIPENSURAT</span>
                 </a>
             </div>
             
-            <nav class="flex-1 overflow-y-auto py-4">
-                <ul class="space-y-1 px-3">
+            <nav class="flex-1 overflow-y-auto py-5">
+                <ul class="space-y-0.5 px-3 pl-4">
                     <li>
-                        <a href="../modules/dashboard.php" class="flex items-center gap-3 px-3 py-2 rounded-lg transition-colors <?php echo basename($_SERVER['PHP_SELF']) == 'dashboard.php' ? 'bg-indigo-50 text-indigo-600' : 'text-slate-600 hover:bg-gray-100 hover:text-indigo-600 transition-colors duration-150'; ?>">
-                            <i class='bx bxs-dashboard text-xl'></i>
-                            <span class="font-medium">Dashboard</span>
+                        <a href="../modules/dashboard.php" class="sidebar-link <?php echo basename($_SERVER['PHP_SELF']) == 'dashboard.php' ? 'active' : ''; ?>">
+                            <i class='bx bxs-dashboard' style="font-size:1.1rem;flex-shrink:0;"></i>
+                            <span>Dashboard</span>
                         </a>
                     </li>
                     <li>
-                        <a href="../modules/pegawai.php" class="flex items-center gap-3 px-3 py-2 rounded-lg transition-colors <?php echo basename($_SERVER['PHP_SELF']) == 'pegawai.php' ? 'bg-indigo-50 text-indigo-600' : 'text-slate-600 hover:bg-gray-100 hover:text-indigo-600 transition-colors duration-150'; ?>">
-                            <i class='bx bxs-user-detail text-xl'></i>
-                            <span class="font-medium">Data Pegawai</span>
+                        <a href="../modules/pegawai.php" class="sidebar-link <?php echo basename($_SERVER['PHP_SELF']) == 'pegawai.php' ? 'active' : ''; ?>">
+                            <i class='bx bxs-user-detail' style="font-size:1.1rem;flex-shrink:0;"></i>
+                            <span>Data Pegawai</span>
                         </a>
                     </li>
                     <li>
-                        <a href="../modules/surat-tugas.php" class="flex items-center gap-3 px-3 py-2 rounded-lg transition-colors <?php echo basename($_SERVER['PHP_SELF']) == 'surat-tugas.php' ? 'bg-indigo-50 text-indigo-600' : 'text-slate-600 hover:bg-gray-100 hover:text-indigo-600 transition-colors duration-150'; ?>">
-                            <i class='bx bxs-envelope text-xl'></i>
-                            <span class="font-medium">Surat Tugas</span>
+                        <a href="../modules/surat-tugas.php" class="sidebar-link <?php echo basename($_SERVER['PHP_SELF']) == 'surat-tugas.php' ? 'active' : ''; ?>">
+                            <i class='bx bxs-envelope' style="font-size:1.1rem;flex-shrink:0;"></i>
+                            <span>Surat Tugas</span>
                         </a>
                     </li>
                     <li>
-                        <a href="../modules/buku-nomor.php" class="flex items-center gap-3 px-3 py-2 rounded-lg transition-colors <?php echo basename($_SERVER['PHP_SELF']) == 'buku-nomor.php' ? 'bg-indigo-50 text-indigo-600' : 'text-slate-600 hover:bg-gray-100 hover:text-indigo-600 transition-colors duration-150'; ?>">
-                            <i class='bx bxs-book-content text-xl'></i>
-                            <span class="font-medium">Buku Nomor</span>
+                        <a href="../modules/buku-nomor.php" class="sidebar-link <?php echo basename($_SERVER['PHP_SELF']) == 'buku-nomor.php' ? 'active' : ''; ?>">
+                            <i class='bx bxs-book-content' style="font-size:1.1rem;flex-shrink:0;"></i>
+                            <span>Buku Nomor</span>
                         </a>
                     </li>
                     <li>
-                        <a href="../modules/surat-keluar.php" class="flex items-center gap-3 px-3 py-2 rounded-lg transition-colors <?php echo basename($_SERVER['PHP_SELF']) == 'surat-keluar.php' ? 'bg-indigo-50 text-indigo-600' : 'text-slate-600 hover:bg-gray-100 hover:text-indigo-600 transition-colors duration-150'; ?>">
-                            <i class='bx bx-send text-xl'></i>
-                            <span class="font-medium">Surat Keluar</span>
+                        <a href="../modules/surat-keluar.php" class="sidebar-link <?php echo basename($_SERVER['PHP_SELF']) == 'surat-keluar.php' ? 'active' : ''; ?>">
+                            <i class='bx bx-send' style="font-size:1.1rem;flex-shrink:0;"></i>
+                            <span>Surat Keluar</span>
                         </a>
                     </li>
                     <li>
-                        <a href="../modules/template.php" class="flex items-center gap-3 px-3 py-2 rounded-lg transition-colors <?php echo basename($_SERVER['PHP_SELF']) == 'template.php' ? 'bg-indigo-50 text-indigo-600' : 'text-slate-600 hover:bg-gray-100 hover:text-indigo-600 transition-colors duration-150'; ?>">
-                            <i class='bx bxs-file-blank text-xl'></i>
-                            <span class="font-medium">Template Word</span>
+                        <a href="../modules/template.php" class="sidebar-link <?php echo basename($_SERVER['PHP_SELF']) == 'template.php' ? 'active' : ''; ?>">
+                            <i class='bx bxs-file-blank' style="font-size:1.1rem;flex-shrink:0;"></i>
+                            <span>Template Word</span>
                         </a>
                     </li>
                     <li>
-                        <a href="../modules/penandatangan.php" class="flex items-center gap-3 px-3 py-2 rounded-lg transition-colors <?php echo basename($_SERVER['PHP_SELF']) == 'penandatangan.php' ? 'bg-indigo-50 text-indigo-600' : 'text-slate-600 hover:bg-gray-100 hover:text-indigo-600 transition-colors duration-150'; ?>">
-                            <i class='bx bxs-pen text-xl'></i>
-                            <span class="font-medium">Penanda Tangan</span>
+                        <a href="../modules/penandatangan.php" class="sidebar-link <?php echo basename($_SERVER['PHP_SELF']) == 'penandatangan.php' ? 'active' : ''; ?>">
+                            <i class='bx bxs-pen' style="font-size:1.1rem;flex-shrink:0;"></i>
+                            <span>Penanda Tangan</span>
                         </a>
                     </li>
                 </ul>
                 
-                <div class="mt-8 px-6">
-                    <p class="text-xs font-semibold text-slate-400 tracking-wider mb-2">Lainnya</p>
-                    <ul class="space-y-1">
+                <div class="mt-6 px-4">
+                    <p class="text-xs font-medium text-gray-400 uppercase tracking-wider mb-2 px-3">Lainnya</p>
+                    <ul class="space-y-0.5">
                         <li>
-                            <a href="../modules/laporan.php" class="flex items-center gap-3 px-3 py-2 rounded-lg transition-colors <?php echo basename($_SERVER['PHP_SELF']) == 'laporan.php' ? 'bg-indigo-50 text-indigo-600' : 'text-slate-600 hover:bg-gray-100 hover:text-indigo-600 transition-colors duration-150'; ?>">
-                                <i class='bx bxs-report text-xl'></i>
-                                <span class="font-medium">Laporan</span>
+                            <a href="../modules/laporan.php" class="sidebar-link <?php echo basename($_SERVER['PHP_SELF']) == 'laporan.php' ? 'active' : ''; ?>">
+                                <i class='bx bxs-report' style="font-size:1.1rem;flex-shrink:0;"></i>
+                                <span>Laporan</span>
                             </a>
                         </li>
                         <li>
-                            <a href="../modules/laporan-pegawai.php" class="flex items-center gap-3 px-3 py-2 rounded-lg transition-colors <?php echo basename($_SERVER['PHP_SELF']) == 'laporan-pegawai.php' ? 'bg-indigo-50 text-indigo-600' : 'text-slate-600 hover:bg-gray-100 hover:text-indigo-600 transition-colors duration-150'; ?>">
-                                <i class='bx bxs-user-check text-xl'></i>
-                                <span class="font-medium">Laporan Per Pegawai</span>
+                            <a href="../modules/laporan-pegawai.php" class="sidebar-link <?php echo basename($_SERVER['PHP_SELF']) == 'laporan-pegawai.php' ? 'active' : ''; ?>">
+                                <i class='bx bxs-user-check' style="font-size:1.1rem;flex-shrink:0;"></i>
+                                <span>Laporan Per Pegawai</span>
                             </a>
                         </li>
                         <li>
-                            <a href="#" class="flex items-center gap-3 px-3 py-2 rounded-lg text-slate-600 hover:bg-gray-100 hover:text-indigo-600 transition-colors duration-150">
-                                <i class='bx bxs-help-circle text-xl'></i>
-                                <span class="font-medium">Bantuan</span>
+                            <a href="#" class="sidebar-link">
+                                <i class='bx bxs-help-circle' style="font-size:1.1rem;flex-shrink:0;"></i>
+                                <span>Bantuan</span>
                             </a>
                         </li>
                     </ul>
                 </div>
             </nav>
             
-            <div class="p-4 border-t border-slate-200">
-                <a href="#" class="flex items-center gap-3 px-3 py-2 rounded-lg text-red-600 hover:bg-red-50 transition-colors">
-                    <i class='bx bx-log-out text-xl'></i>
-                    <span class="font-medium">Keluar</span>
+            <div class="p-4 border-t border-gray-100">
+                <a href="#" class="sidebar-link text-red-600 hover:text-red-700" style="color:#dc2626;">
+                    <i class='bx bx-log-out' style="font-size:1.1rem;flex-shrink:0;"></i>
+                    <span>Keluar</span>
                 </a>
             </div>
         </aside>
@@ -133,26 +143,29 @@
         <!-- Main Content -->
         <div class="flex-1 flex flex-col min-w-0 overflow-hidden">
             <!-- Top Header -->
-            <header class="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-4 sm:px-6 lg:px-8">
-                <button class="md:hidden p-2 rounded-lg text-slate-500 hover:bg-slate-100">
+            <header class="h-16 bg-white border-b border-gray-200 flex items-center justify-between px-4 sm:px-6 lg:px-8">
+                <button class="md:hidden p-2 rounded-lg text-gray-500 hover:bg-gray-100">
                     <i class='bx bx-menu text-2xl'></i>
                 </button>
                 
-                <div class="flex items-center gap-4 ml-auto">
+                <div class="flex items-center gap-3 ml-auto">
                     <!-- Notification Bell Button -->
-                    <button class="relative p-1.5 text-gray-500 hover:text-indigo-600 hover:bg-slate-50 rounded-lg transition-colors" aria-label="Notifikasi">
+                    <button class="relative p-1.5 text-gray-400 hover:text-indigo-600 hover:bg-gray-50 rounded-lg transition-colors" aria-label="Notifikasi">
                         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5">
                             <path stroke-linecap="round" stroke-linejoin="round" d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75v-.7V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0" />
                         </svg>
-                        <span class="absolute top-0 right-0 w-2 h-2 bg-red-500 rounded-full"></span>
+                        <span class="absolute top-0.5 right-0.5 w-1.5 h-1.5 bg-red-500 rounded-full"></span>
                     </button>
 
-                    <div class="flex items-center gap-3">
+                    <!-- Separator -->
+                    <div class="h-8 w-px bg-gray-200"></div>
+
+                    <div class="flex items-center gap-2.5">
                         <div class="text-right hidden sm:block">
-                            <p class="text-sm font-medium text-slate-900">Admin User</p>
-                            <p class="text-xs text-slate-500">Administrator</p>
+                            <p class="text-sm font-semibold text-gray-800">Admin User</p>
+                            <p class="text-xs text-gray-400">Administrator</p>
                         </div>
-                        <div class="h-10 w-10 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 font-bold">
+                        <div class="h-9 w-9 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 font-bold text-sm">
                             A
                         </div>
                     </div>
@@ -160,5 +173,5 @@
             </header>
 
             <!-- Page Content -->
-            <main class="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8">
+            <main class="flex-1 overflow-y-auto p-6 lg:p-8">
                 <div class="max-w-7xl mx-auto">

@@ -262,31 +262,32 @@ include '../includes/header.php';
 
 <div class="space-y-6">
     <div class="flex flex-col md:flex-row justify-between items-center gap-4 print:hidden">
-        <h2 class="text-2xl font-bold text-slate-800">Laporan Surat Tugas</h2>
+        <div>
+            <h1 class="page-header-title">Laporan Surat Tugas</h1>
+            <p class="page-header-sub">Rekapitulasi data penerbitan surat tugas per periode</p>
+        </div>
         <div class="flex gap-2">
-            <a href="?start_date=<?php echo urlencode($start_date); ?>&end_date=<?php echo urlencode($end_date); ?>&export=excel" class="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-colors shadow-sm">
-                <i class='bx bx-spreadsheet'></i> Export Excel
+            <a href="?start_date=<?php echo urlencode($start_date); ?>&end_date=<?php echo urlencode($end_date); ?>&export=excel" class="btn-action hover:border-emerald-300 text-emerald-700 bg-emerald-50 hover:bg-emerald-100">
+                <i class='bx bx-spreadsheet text-base'></i> Export Excel
             </a>
-            <a href="?start_date=<?php echo urlencode($start_date); ?>&end_date=<?php echo urlencode($end_date); ?>&export=pdf" target="_blank" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-colors shadow-sm">
-                <i class='bx bx-printer'></i> Cetak Laporan
+            <a href="?start_date=<?php echo urlencode($start_date); ?>&end_date=<?php echo urlencode($end_date); ?>&export=pdf" target="_blank" class="btn-action primary">
+                <i class='bx bx-printer text-base'></i> Cetak Laporan
             </a>
         </div>
     </div>
 
     <!-- Filter Section (Hidden on Print) -->
-    <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-4 print:hidden">
+    <div class="card p-4 print:hidden">
         <form action="" method="GET" class="flex flex-col md:flex-row gap-4 items-end">
             <div class="w-full md:w-auto">
-                <label class="block text-sm font-medium text-slate-700 mb-1">Dari Tanggal</label>
-                <input type="date" name="start_date" value="<?php echo $start_date; ?>" 
-                    class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none">
+                <label class="block text-xs font-medium text-gray-500 mb-1">Dari Tanggal</label>
+                <input type="date" name="start_date" value="<?php echo $start_date; ?>" class="input-premium py-1.5">
             </div>
             <div class="w-full md:w-auto">
-                <label class="block text-sm font-medium text-slate-700 mb-1">Sampai Tanggal</label>
-                <input type="date" name="end_date" value="<?php echo $end_date; ?>" 
-                    class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none">
+                <label class="block text-xs font-medium text-gray-500 mb-1">Sampai Tanggal</label>
+                <input type="date" name="end_date" value="<?php echo $end_date; ?>" class="input-premium py-1.5">
             </div>
-            <button type="submit" class="bg-slate-800 hover:bg-slate-900 text-white px-6 py-2 rounded-lg transition-colors w-full md:w-auto">
+            <button type="submit" class="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2 rounded-lg text-sm font-medium transition-colors w-full md:w-auto">
                 Tampilkan
             </button>
         </form>
@@ -299,37 +300,37 @@ include '../includes/header.php';
     </div>
 
     <!-- Table Result -->
-    <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden print:shadow-none print:border-0">
+    <div class="card overflow-hidden print:shadow-none print:border-0">
         <div class="overflow-x-auto">
-            <table class="w-full text-left border-collapse">
+            <table class="w-full text-left table-premium">
                 <thead>
-                    <tr class="bg-slate-50 text-slate-600 text-sm uppercase tracking-wider print:bg-white print:border-b-2 print:border-slate-800">
-                        <th class="px-6 py-4 font-semibold border-b border-slate-100 print:px-2 print:py-2">No</th>
-                        <th class="px-6 py-4 font-semibold border-b border-slate-100 print:px-2 print:py-2">Nomor Surat</th>
-                        <th class="px-6 py-4 font-semibold border-b border-slate-100 print:px-2 print:py-2">Tanggal</th>
-                        <th class="px-6 py-4 font-semibold border-b border-slate-100 print:px-2 print:py-2">Tujuan / Maksud</th>
-                        <th class="px-6 py-4 font-semibold border-b border-slate-100 print:px-2 print:py-2">Pegawai</th>
-                        <th class="px-6 py-4 font-semibold border-b border-slate-100 print:px-2 print:py-2">Pelaksanaan</th>
+                    <tr class="print:bg-white print:border-b-2 print:border-slate-800">
+                        <th style="width: 50px;" class="print:px-2 print:py-2">No</th>
+                        <th class="print:px-2 print:py-2">Nomor Surat</th>
+                        <th class="print:px-2 print:py-2">Tanggal</th>
+                        <th class="print:px-2 print:py-2">Tujuan / Maksud</th>
+                        <th class="print:px-2 print:py-2">Pegawai</th>
+                        <th class="print:px-2 print:py-2">Pelaksanaan</th>
                     </tr>
                 </thead>
-                <tbody class="divide-y divide-slate-100 print:divide-slate-200">
+                <tbody>
                     <?php if (count($laporan) > 0): ?>
                         <?php $no = $start + 1; foreach ($laporan as $row): ?>
-                            <tr class="hover:bg-slate-50 transition-colors print:hover:bg-white">
-                                <td class="px-6 py-4 text-sm text-slate-600 print:px-2 print:py-2 align-top"><?php echo $no++; ?></td>
-                                <td class="px-6 py-4 text-sm font-medium text-slate-900 print:px-2 print:py-2 align-top whitespace-nowrap">
+                            <tr class="print:hover:bg-white">
+                                <td class="text-gray-500 print:px-2 print:py-2 align-top"><?php echo $no++; ?></td>
+                                <td class="font-medium text-gray-900 print:px-2 print:py-2 align-top whitespace-nowrap">
                                     <?php echo $row['nomor_surat']; ?>
                                 </td>
-                                <td class="px-6 py-4 text-sm text-slate-600 print:px-2 print:py-2 align-top whitespace-nowrap">
+                                <td class="text-gray-500 print:px-2 print:py-2 align-top whitespace-nowrap">
                                     <?php echo date('d/m/Y', strtotime($row['tanggal_surat'])); ?>
                                 </td>
-                                <td class="px-6 py-4 text-sm text-slate-600 print:px-2 print:py-2 align-top">
+                                <td class="text-gray-600 print:px-2 print:py-2 align-top">
                                     <?php echo $row['untuk']; ?>
                                 </td>
-                                <td class="px-6 py-4 text-sm text-slate-600 print:px-2 print:py-2 align-top">
+                                <td class="text-gray-600 print:px-2 print:py-2 align-top">
                                     <?php echo $row['pegawai_names']; ?>
                                 </td>
-                                <td class="px-6 py-4 text-sm text-slate-600 print:px-2 print:py-2 align-top whitespace-nowrap">
+                                <td class="text-gray-500 print:px-2 print:py-2 align-top whitespace-nowrap">
                                     <?php 
                                     echo date('d/m/Y', strtotime($row['tanggal_mulai']));
                                     if ($row['tanggal_mulai'] != $row['tanggal_selesai']) {
@@ -341,7 +342,7 @@ include '../includes/header.php';
                         <?php endforeach; ?>
                     <?php else: ?>
                         <tr>
-                            <td colspan="6" class="px-6 py-8 text-center text-slate-500">
+                            <td colspan="6" class="px-6 py-8 text-center text-gray-400">
                                 Tidak ada data surat tugas pada periode ini.
                             </td>
                         </tr>

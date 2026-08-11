@@ -59,85 +59,88 @@ foreach ($chart_data as $cd) {
 ?>
 
 <div class="space-y-6">
+    <!-- Page Header -->
     <div class="flex items-center justify-between">
-        <h2 class="text-2xl font-bold text-slate-800">Dashboard</h2>
-        <div class="text-sm text-slate-500">
-            Terakhir diperbarui: <?php echo date('d M Y H:i:s'); ?> WIB
+        <div>
+            <h1 class="page-header-title">Dashboard</h1>
+            <p class="page-header-sub">Ringkasan data aplikasi SIPENSURAT</p>
+        </div>
+        <div class="text-xs text-gray-400">
+            Diperbarui: <?php echo date('d M Y H:i'); ?> WIB
         </div>
     </div>
 
-    <!-- Info Cards -->
+    <!-- Stat Cards -->
     <div class="grid grid-cols-1 min-[480px]:grid-cols-2 md:grid-cols-4 gap-6">
-        <!-- Card 1 -->
-        <div class="bg-gradient-to-br from-blue-700 to-blue-800 rounded-xl shadow-lg p-6 text-white transform transition-all hover:scale-[1.02]">
+        <!-- Card 1: Total Pegawai -->
+        <div class="stat-card blue">
             <div class="flex justify-between items-start">
                 <div>
-                    <p class="text-blue-100 font-medium mb-1">Total Pegawai</p>
-                    <h3 class="text-4xl font-bold"><?php echo $total_pegawai; ?></h3>
+                    <p class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Total Pegawai</p>
+                    <h3 class="text-3xl font-bold text-gray-900"><?php echo $total_pegawai; ?></h3>
                 </div>
-                <div class="p-3 bg-white/20 rounded-lg backdrop-blur-sm">
-                    <i class='bx bxs-user text-2xl'></i>
+                <div class="stat-icon blue">
+                    <i class='bx bxs-user'></i>
                 </div>
             </div>
-            <div class="mt-4 flex items-center text-sm text-blue-100">
-                <span class="bg-white/20 px-2 py-1 rounded text-xs mr-2">Aktif</span>
-                Pegawai Terdaftar
+            <div class="mt-4 flex items-center gap-2">
+                <span class="badge badge-gray">Aktif</span>
+                <span class="text-xs text-gray-500">Pegawai Terdaftar</span>
             </div>
         </div>
 
-        <!-- Card 2 -->
-        <div class="bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl shadow-lg p-6 text-white transform transition-all hover:scale-[1.02]">
+        <!-- Card 2: Total Surat Tugas -->
+        <div class="stat-card indigo">
             <div class="flex justify-between items-start">
                 <div>
-                    <p class="text-blue-100 font-medium mb-1">Total Surat Tugas</p>
-                    <h3 class="text-4xl font-bold"><?php echo $total_surat; ?></h3>
+                    <p class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Total Surat Tugas</p>
+                    <h3 class="text-3xl font-bold text-gray-900"><?php echo $total_surat; ?></h3>
                 </div>
-                <div class="p-3 bg-white/20 rounded-lg backdrop-blur-sm">
-                    <i class='bx bxs-envelope text-2xl'></i>
+                <div class="stat-icon indigo">
+                    <i class='bx bxs-envelope'></i>
                 </div>
             </div>
-            <div class="mt-4 flex items-center text-sm text-blue-100">
-                <span class="bg-white/20 px-2 py-1 rounded text-xs mr-2">Total</span>
-                Surat Dibuat
+            <div class="mt-4 flex items-center gap-2">
+                <span class="badge badge-indigo">Total</span>
+                <span class="text-xs text-gray-500">Surat Dibuat</span>
             </div>
         </div>
 
         <!-- Card 3: Surat Bulan Ini -->
-        <div class="bg-gradient-to-br from-[#4f46e5] to-[#6366f1] rounded-xl shadow-lg p-6 text-white transform transition-all hover:scale-[1.02]">
+        <div class="stat-card violet">
             <div class="flex justify-between items-start">
                 <div>
-                    <p class="text-indigo-100 font-medium mb-1">Surat Bulan Ini</p>
-                    <h3 class="text-4xl font-bold"><?php echo $surat_bulan_ini; ?></h3>
+                    <p class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Surat Bulan Ini</p>
+                    <h3 class="text-3xl font-bold text-gray-900"><?php echo $surat_bulan_ini; ?></h3>
                 </div>
-                <div class="p-3 bg-white/20 rounded-lg backdrop-blur-sm">
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-6 h-6">
+                <div class="stat-icon violet">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-5 h-5">
                         <path stroke-linecap="round" stroke-linejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5m-9-6h.008v.008H12v-.008zM12 15h.008v.008H12V15zm0 2.25h.008v.008H12v-.008zM9.75 15h.008v.008H9.75V15zm0 2.25h.008v.008H9.75v-.008zM7.5 15h.008v.008H7.5V15zm0 2.25h.008v.008H7.5v-.008zm6.75-4.5h.008v.008h-.008v-.008zm0 2.25h.008v.008h-.008V15zm0 2.25h.008v.008h-.008v-.008zm2.25-4.5h.008v.008H16.5v-.008zm0 2.25h.008v.008H16.5V15z" />
                     </svg>
                 </div>
             </div>
-            <div class="mt-4 flex items-center text-sm text-indigo-100">
-                <span class="bg-white/20 px-2 py-1 rounded text-xs mr-2">Bulan Ini</span>
-                Surat Diterbitkan
+            <div class="mt-4 flex items-center gap-2">
+                <span class="badge badge-violet">Bulan Ini</span>
+                <span class="text-xs text-gray-500">Surat Diterbitkan</span>
             </div>
         </div>
 
         <!-- Card 4: Surat Hari Ini -->
-        <div class="bg-gradient-to-br from-[#0d9488] to-[#14b8a6] rounded-xl shadow-lg p-6 text-white transform transition-all hover:scale-[1.02]">
+        <div class="stat-card teal">
             <div class="flex justify-between items-start">
                 <div>
-                    <p class="text-teal-100 font-medium mb-1">Surat Hari Ini</p>
-                    <h3 class="text-4xl font-bold"><?php echo $surat_hari_ini; ?></h3>
+                    <p class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Surat Hari Ini</p>
+                    <h3 class="text-3xl font-bold text-gray-900"><?php echo $surat_hari_ini; ?></h3>
                 </div>
-                <div class="p-3 bg-white/20 rounded-lg backdrop-blur-sm">
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-6 h-6">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M10.125 2.25h3.75a2.25 2.25 0 012.25 2.25v15a2.25 2.25 0 01-2.25 2.25h-3.75a2.25 2.25 0 01-2.25-2.25v-15a2.25 2.25 0 012.25-2.25z" />
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M9 11.25l2.25 2.25L15 9" />
+                <div class="stat-icon teal">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-5 h-5">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                     </svg>
                 </div>
             </div>
-            <div class="mt-4 flex items-center text-sm text-teal-100">
-                <span class="bg-white/20 px-2 py-1 rounded text-xs mr-2">Hari Ini</span>
-                Surat Diterbitkan
+            <div class="mt-4 flex items-center gap-2">
+                <span class="badge badge-emerald">Hari Ini</span>
+                <span class="text-xs text-gray-500">Surat Diterbitkan</span>
             </div>
         </div>
     </div>
@@ -145,73 +148,73 @@ foreach ($chart_data as $cd) {
     <!-- Recent Surat Tugas & Chart -->
     <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
         <!-- Table -->
-        <div class="lg:col-span-7 bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-            <div class="p-6 border-b border-slate-100 flex justify-between items-center">
-                <h5 class="font-bold text-slate-800">Surat Tugas Terbaru</h5>
-                <a href="surat-tugas.php" class="text-sm text-blue-600 hover:text-blue-700 font-medium">Lihat Semua</a>
+        <div class="lg:col-span-7 card overflow-hidden">
+            <div class="px-6 py-4 border-b border-gray-100 flex justify-between items-center">
+                <div>
+                    <h2 class="text-sm font-semibold text-gray-900">Surat Tugas Terbaru</h2>
+                    <p class="text-xs text-gray-400 mt-0.5">5 surat terakhir diterbitkan</p>
+                </div>
+                <a href="surat-tugas.php" class="text-xs font-medium text-indigo-600 hover:text-indigo-700">Lihat Semua →</a>
             </div>
             <div class="overflow-x-auto">
-                <table class="w-full text-left border-collapse">
+                <table class="w-full text-left table-premium">
                     <thead>
-                        <tr class="bg-slate-50 text-slate-600 text-xs uppercase tracking-wider">
-                            <th class="px-6 py-4 font-semibold border-b border-slate-100">Nomor Surat</th>
-                            <th class="px-6 py-4 font-semibold border-b border-slate-100">Tanggal</th>
-                            <th class="px-6 py-4 font-semibold border-b border-slate-100">Pegawai</th>
-                            <th class="px-6 py-4 font-semibold border-b border-slate-100">Status</th>
-                            <th class="px-6 py-4 font-semibold border-b border-slate-100 text-right">Aksi</th>
+                        <tr>
+                            <th>Nomor Surat</th>
+                            <th>Tanggal</th>
+                            <th>Pegawai</th>
+                            <th>Status</th>
+                            <th class="text-right">Aksi</th>
                         </tr>
                     </thead>
-                    <tbody class="divide-y divide-slate-100">
-                        <?php foreach ($recent_surat as $surat): 
-                            // Proses nama pegawai: tampilkan nama pertama + badge jika > 1
+                    <tbody>
+                        <?php foreach ($recent_surat as $surat):
                             $nama_list = explode(', ', $surat['pegawai_names']);
                             $nama_pertama = $nama_list[0] ?? '-';
                             $sisa_pegawai = count($nama_list) - 1;
                             
-                            // Tentukan badge status berdasarkan status buku nomor
                             $status = strtolower($surat['status_buku'] ?? 'terisi');
                             if ($status == 'terisi') {
-                                $badge_class = 'bg-green-100 text-green-700';
+                                $badge_class = 'badge-green';
                                 $badge_label = 'Diterbitkan';
                             } elseif ($status == 'kosong') {
-                                $badge_class = 'bg-slate-100 text-slate-600';
+                                $badge_class = 'badge-gray';
                                 $badge_label = 'Draft';
                             } else {
-                                $badge_class = 'bg-blue-100 text-blue-700';
+                                $badge_class = 'badge-blue';
                                 $badge_label = 'Diterbitkan';
                             }
                         ?>
-                            <tr class="hover:bg-slate-50 transition-colors">
-                                <td class="px-6 py-4 text-sm font-medium text-slate-900">
+                            <tr>
+                                <td class="font-medium text-gray-900">
                                     <?php echo htmlspecialchars($surat['nomor_surat']); ?>
                                 </td>
-                                <td class="px-6 py-4 text-sm text-slate-600">
+                                <td class="text-gray-500">
                                     <?php echo date('d/m/Y', strtotime($surat['tanggal_surat'])); ?>
                                 </td>
-                                <td class="px-6 py-4 text-sm text-slate-600">
+                                <td>
                                     <div class="flex items-center gap-2">
-                                        <div class="w-6 h-6 rounded-full bg-blue-100 flex items-center justify-center text-blue-700 text-xs font-bold flex-shrink-0">
+                                        <div class="avatar avatar-0">
                                             <?php echo strtoupper(substr($nama_pertama, 0, 1)); ?>
                                         </div>
-                                        <span class="truncate max-w-[140px]" title="<?php echo htmlspecialchars($surat['pegawai_names']); ?>">
+                                        <span class="truncate max-w-[130px] text-gray-700" title="<?php echo htmlspecialchars($surat['pegawai_names']); ?>">
                                             <?php echo htmlspecialchars($nama_pertama); ?>
                                         </span>
                                         <?php if ($sisa_pegawai > 0): ?>
-                                            <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-700 flex-shrink-0 cursor-help" title="<?php echo $sisa_pegawai; ?> pegawai lainnya dalam surat ini">
+                                            <span class="badge badge-blue cursor-help" title="<?php echo $sisa_pegawai; ?> pegawai lainnya">
                                                 +<?php echo $sisa_pegawai; ?>
                                             </span>
                                         <?php endif; ?>
                                     </div>
                                 </td>
-                                <td class="px-6 py-4 text-sm">
-                                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium <?php echo $badge_class; ?>">
+                                <td>
+                                    <span class="badge <?php echo $badge_class; ?>">
                                         <?php echo $badge_label; ?>
                                     </span>
                                 </td>
-                                <td class="px-6 py-4 text-sm text-right whitespace-nowrap">
-                                    <a href="generate-surat.php?id=<?php echo $surat['id']; ?>" class="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium border border-blue-200 rounded text-blue-600 hover:bg-blue-50 transition-colors" title="Lihat Detail">
-                                        <i class='bx bx-show text-sm'></i>
-                                        <span>Lihat</span>
+                                <td class="text-right">
+                                    <a href="generate-surat.php?id=<?php echo $surat['id']; ?>" class="btn-action primary">
+                                        <i class='bx bx-show'></i> Lihat
                                     </a>
                                 </td>
                             </tr>
@@ -219,18 +222,18 @@ foreach ($chart_data as $cd) {
                     </tbody>
                 </table>
             </div>
-            <div class="p-4 border-t border-slate-100 text-center">
-                <a href="surat-tugas.php" class="text-sm text-blue-600 hover:text-blue-700 font-medium inline-flex items-center gap-1">
+            <div class="px-6 py-3 border-t border-gray-50 text-center">
+                <a href="surat-tugas.php" class="text-xs font-medium text-indigo-600 hover:text-indigo-700 inline-flex items-center gap-1">
                     Lihat semua surat <i class='bx bx-right-arrow-alt'></i>
                 </a>
             </div>
         </div>
 
         <!-- Chart -->
-        <div class="lg:col-span-5 bg-white rounded-xl shadow-sm border border-slate-200">
-            <div class="p-6 border-b border-slate-100">
-                <h5 class="font-bold text-slate-800">Jumlah Surat Tugas per Bulan</h5>
-                <p class="text-xs text-slate-500 mt-1">Data 6 bulan terakhir</p>
+        <div class="lg:col-span-5 card">
+            <div class="px-6 py-4 border-b border-gray-100">
+                <h2 class="text-sm font-semibold text-gray-900">Surat Tugas per Bulan</h2>
+                <p class="text-xs text-gray-400 mt-0.5">Data 6 bulan terakhir</p>
             </div>
             <div class="p-6">
                 <div style="height: 280px;">
@@ -242,14 +245,13 @@ foreach ($chart_data as $cd) {
 </div>
 
 <script>
-    // Inisialisasi Chart
     document.addEventListener('DOMContentLoaded', function () {
         const ctx = document.getElementById('suratChart').getContext('2d');
         
-        // Gradient for chart
+        // Gradient fill
         const gradient = ctx.createLinearGradient(0, 0, 0, 300);
-        gradient.addColorStop(0, 'rgba(37, 99, 235, 0.3)');
-        gradient.addColorStop(1, 'rgba(37, 99, 235, 0.0)');
+        gradient.addColorStop(0, 'rgba(99, 102, 241, 0.18)');
+        gradient.addColorStop(1, 'rgba(99, 102, 241, 0.0)');
 
         const chartData = <?php echo json_encode(array_column($chart_data, 'total')); ?>;
         const chartLabels = <?php echo json_encode($chart_labels); ?>;
@@ -263,17 +265,17 @@ foreach ($chart_data as $cd) {
                 datasets: [{
                     label: 'Jumlah Surat',
                     data: chartData,
-                    borderColor: '#2563eb',
+                    borderColor: '#6366f1',
                     backgroundColor: gradient,
-                    borderWidth: 2.5,
-                    pointBackgroundColor: '#2563eb',
+                    borderWidth: 2,
+                    pointBackgroundColor: '#6366f1',
                     pointBorderColor: '#ffffff',
                     pointBorderWidth: 2,
-                    pointRadius: 5,
-                    pointHoverRadius: 7,
-                    pointHoverBackgroundColor: '#2563eb',
+                    pointRadius: 3,
+                    pointHoverRadius: 5,
+                    pointHoverBackgroundColor: '#4f46e5',
                     pointHoverBorderColor: '#ffffff',
-                    pointHoverBorderWidth: 3,
+                    pointHoverBorderWidth: 2,
                     fill: true,
                     tension: 0.4
                 }]
@@ -282,89 +284,48 @@ foreach ($chart_data as $cd) {
                 responsive: true,
                 maintainAspectRatio: false,
                 plugins: {
-                    legend: {
-                        display: false
-                    },
+                    legend: { display: false },
                     tooltip: {
-                        backgroundColor: '#1e293b',
-                        padding: 12,
-                        titleFont: {
-                            size: 13,
-                            weight: 'bold'
-                        },
-                        bodyFont: {
-                            size: 13
-                        },
-                        cornerRadius: 8,
+                        backgroundColor: '#111827',
+                        padding: 10,
+                        titleFont: { size: 12, weight: '600', family: 'Inter' },
+                        bodyFont: { size: 12, family: 'Inter' },
+                        cornerRadius: 6,
                         displayColors: false,
                         callbacks: {
-                            title: function(tooltipItems) {
-                                const idx = tooltipItems[0].dataIndex;
+                            title: function(items) {
+                                const idx = items[0].dataIndex;
                                 return chartBulan[idx] + ' ' + chartTahun[idx];
                             },
-                            label: function(context) {
-                                return 'Jumlah Surat: ' + context.parsed.y;
+                            label: function(ctx) {
+                                return 'Jumlah Surat: ' + ctx.parsed.y;
                             }
                         }
-                    },
-                    // Plugin untuk menampilkan nilai di atas titik data
-                    datalabels: undefined
+                    }
                 },
                 scales: {
                     y: {
                         beginAtZero: true,
-                        title: {
-                            display: true,
-                            text: 'Jumlah Surat',
-                            font: {
-                                size: 12,
-                                weight: '500'
-                            },
-                            color: '#64748b'
-                        },
                         grid: {
-                            borderDash: [2, 4],
-                            color: '#e2e8f0',
+                            color: 'rgba(0,0,0,0.04)',
                             drawBorder: false
                         },
                         ticks: {
-                            font: {
-                                size: 11
-                            },
-                            color: '#64748b',
-                            stepSize: 1
+                            color: '#9ca3af',
+                            font: { size: 11 },
+                            stepSize: 5,
+                            precision: 0
                         }
                     },
                     x: {
-                        grid: {
-                            display: false
-                        },
+                        grid: { display: false },
                         ticks: {
-                            font: {
-                                size: 11
-                            },
-                            color: '#64748b'
+                            color: '#9ca3af',
+                            font: { size: 11 }
                         }
                     }
                 }
-            },
-            plugins: [{
-                // Custom plugin: tampilkan nilai angka di atas setiap titik
-                afterDatasetsDraw: function(chart) {
-                    const ctx = chart.ctx;
-                    chart.data.datasets.forEach(function(dataset, i) {
-                        const meta = chart.getDatasetMeta(i);
-                        meta.data.forEach(function(element, index) {
-                            const data = dataset.data[index];
-                            ctx.fillStyle = '#1e40af';
-                            ctx.font = 'bold 11px sans-serif';
-                            ctx.textAlign = 'center';
-                            ctx.textBaseline = 'bottom';
-                            ctx.fillText(data, element.x, element.y - 10);
-                        });
-                    });
-                }
-            }]
+            }
         });
     });
 </script>

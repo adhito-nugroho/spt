@@ -1,0 +1,6 @@
+- [x] Task 1: Design System CSS Global
+- [x] Task 2: Sidebar, Header Bar, Footer
+- [x] Task 3: Dashboard
+- [x] Task 4: Halaman Data Utama (Pegawai, Surat Tugas, Buku Nomor, Surat Keluar)
+- [x] Task 5: Halaman Lanjutan (Template, Penandatangan, Laporan, Laporan Pegawai)
+- [x] Task 6: Verifikasi & Screenshot

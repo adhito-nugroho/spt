@@ -189,14 +189,17 @@ $pegawai = $stmt->fetchAll();
 
 <div class="space-y-6">
     <div class="flex flex-col md:flex-row justify-between items-center gap-4">
-        <h2 class="text-2xl font-bold text-slate-800">Data Pegawai</h2>
-        <button onclick="openModal('addPegawaiModal')" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-colors shadow-sm">
+        <div>
+            <h1 class="page-header-title">Data Pegawai</h1>
+            <p class="page-header-sub">Kelola data pegawai terdaftar</p>
+        </div>
+        <button onclick="openModal('addPegawaiModal')" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-colors shadow-sm text-sm font-medium">
             <i class='bx bx-plus'></i> Tambah Pegawai
         </button>
     </div>
 
     <!-- Form Pencarian -->
-    <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-4">
+    <div class="card p-4">
         <form action="" method="GET" class="flex gap-2">
             <div class="relative flex-1">
                 <i class='bx bx-search absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400'></i>
@@ -254,67 +257,78 @@ $pegawai = $stmt->fetchAll();
     </div>
 
     <!-- Tabel Pegawai -->
-    <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+    <div class="card overflow-hidden">
         <div class="overflow-x-auto">
             <?php if (count($pegawai) > 0): ?>
-                <table class="w-full text-left border-collapse" id="tabelPegawai">
+                <table class="w-full text-left table-premium" id="tabelPegawai">
                     <thead>
-                        <tr class="bg-slate-50 text-slate-600 text-xs uppercase tracking-wider">
-                            <th class="px-4 py-3 font-semibold border-b border-slate-100" style="width:140px;">NIP</th>
-                            <th class="px-4 py-3 font-semibold border-b border-slate-100 cursor-pointer select-none sortable-col" data-sort="nama" data-order="asc">
+                        <tr>
+                            <th style="width:140px;">NIP</th>
+                            <th class="cursor-pointer select-none sortable-col" data-sort="nama" data-order="asc">
                                 <span class="inline-flex items-center gap-1">Nama <i class='bx bx-sort-up text-indigo-600 sort-icon'></i></span>
                             </th>
-                            <th class="px-4 py-3 font-semibold border-b border-slate-100 cursor-pointer select-none sortable-col" data-sort="pangkat" data-order="">
+                            <th class="cursor-pointer select-none sortable-col" data-sort="pangkat" data-order="">
                                 <span class="inline-flex items-center gap-1">Pangkat <i class='bx bx-sort-alt-2 text-slate-400 sort-icon'></i></span>
                             </th>
-                            <th class="px-4 py-3 font-semibold border-b border-slate-100 cursor-pointer select-none sortable-col" data-sort="jabatan" data-order="" style="min-width:200px;">
+                            <th class="cursor-pointer select-none sortable-col" data-sort="jabatan" data-order="" style="min-width:200px;">
                                 <span class="inline-flex items-center gap-1">Jabatan <i class='bx bx-sort-alt-2 text-slate-400 sort-icon'></i></span>
                             </th>
-                            <th class="px-4 py-3 font-semibold border-b border-slate-100 text-right">Aksi</th>
+                            <th class="text-right">Aksi</th>
                         </tr>
                     </thead>
-                    <tbody class="divide-y divide-slate-100">
-                        <?php foreach ($pegawai as $p): 
+                    <tbody>
+                        <?php 
+                        $i = 0;
+                        foreach ($pegawai as $p): 
                             $nip_full = htmlspecialchars($p['nip']);
                             $nip_short = (strlen($p['nip']) > 12) 
                                 ? substr($p['nip'], 0, 8) . '...' . substr($p['nip'], -4) 
                                 : $p['nip'];
+                            $avatar_idx = $i % 5;
+                            $i++;
                         ?>
-                            <tr class="hover:bg-slate-50 transition-colors pegawai-row"
+                            <tr class="pegawai-row"
                                 data-nama="<?php echo htmlspecialchars($p['nama']); ?>"
                                 data-pangkat="<?php echo htmlspecialchars($p['pangkat']); ?>"
                                 data-jabatan="<?php echo htmlspecialchars($p['jabatan']); ?>">
-                                <td class="px-4 py-2.5 text-sm text-slate-600">
+                                <td>
                                     <div class="group/nip inline-flex items-center gap-1">
-                                        <span class="font-mono text-xs" title="<?php echo $nip_full; ?>"><?php echo htmlspecialchars($nip_short); ?></span>
+                                        <span class="font-mono text-xs text-gray-600" title="<?php echo $nip_full; ?>"><?php echo htmlspecialchars($nip_short); ?></span>
                                         <button type="button" class="copy-nip opacity-0 group-hover/nip:opacity-100 text-slate-400 hover:text-indigo-600 transition-opacity" data-nip="<?php echo $nip_full; ?>" title="Salin NIP">
                                             <i class='bx bx-copy text-sm'></i>
                                         </button>
                                     </div>
                                 </td>
-                                <td class="px-4 py-2.5 text-sm font-medium text-slate-900"><?php echo htmlspecialchars($p['nama']); ?></td>
-                                <td class="px-4 py-2.5 text-sm text-slate-600"><?php echo htmlspecialchars($p['pangkat']); ?></td>
-                                <td class="px-4 py-2.5 text-sm text-slate-600"><?php echo htmlspecialchars($p['jabatan']); ?></td>
-                                <td class="px-4 py-2.5 text-sm text-right">
-                                    <div class="inline-flex items-center gap-2">
-                                        <button class="text-blue-500 hover:text-blue-600 view-btn transition-colors" title="Lihat Detail"
+                                <td>
+                                    <div class="flex items-center gap-2.5">
+                                        <div class="avatar avatar-<?php echo $avatar_idx; ?>">
+                                            <?php echo strtoupper(substr($p['nama'], 0, 1)); ?>
+                                        </div>
+                                        <span class="font-medium text-gray-900"><?php echo htmlspecialchars($p['nama']); ?></span>
+                                    </div>
+                                </td>
+                                <td class="text-gray-600"><?php echo htmlspecialchars($p['pangkat']); ?></td>
+                                <td class="text-gray-600"><?php echo htmlspecialchars($p['jabatan']); ?></td>
+                                <td class="text-right">
+                                    <div class="inline-flex items-center gap-1.5">
+                                        <button class="btn-action primary view-btn" title="Lihat Detail"
                                             data-nip="<?php echo htmlspecialchars($p['nip']); ?>"
                                             data-nama="<?php echo htmlspecialchars($p['nama']); ?>"
                                             data-pangkat="<?php echo htmlspecialchars($p['pangkat']); ?>"
                                             data-jabatan="<?php echo htmlspecialchars($p['jabatan']); ?>">
-                                            <i class='bx bx-show text-lg'></i>
+                                            <i class='bx bx-show'></i>
                                         </button>
-                                        <button class="text-amber-500 hover:text-amber-600 edit-btn transition-colors" title="Edit"
+                                        <button class="btn-action warning edit-btn" title="Edit"
                                             data-nip="<?php echo htmlspecialchars($p['nip']); ?>"
                                             data-nama="<?php echo htmlspecialchars($p['nama']); ?>"
                                             data-pangkat="<?php echo htmlspecialchars($p['pangkat']); ?>"
                                             data-jabatan="<?php echo htmlspecialchars($p['jabatan']); ?>">
-                                            <i class='bx bx-edit text-lg'></i>
+                                            <i class='bx bx-edit'></i>
                                         </button>
-                                        <button class="text-red-500 hover:text-red-600 delete-btn transition-colors" title="Hapus"
+                                        <button class="btn-action danger delete-btn" title="Hapus"
                                             data-nip="<?php echo htmlspecialchars($p['nip']); ?>"
                                             data-nama="<?php echo htmlspecialchars($p['nama']); ?>">
-                                            <i class='bx bx-trash text-lg'></i>
+                                            <i class='bx bx-trash'></i>
                                         </button>
                                     </div>
                                 </td>

@@ -636,14 +636,17 @@ include '../includes/header.php';
 
 <div class="space-y-6">
     <div class="flex flex-col md:flex-row justify-between items-center gap-4">
-        <h2 class="text-2xl font-bold text-slate-800">Surat Tugas</h2>
-        <button onclick="openModal('addSuratModal')" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-colors shadow-sm">
+        <div>
+            <h1 class="page-header-title">Surat Tugas</h1>
+            <p class="page-header-sub">Manajemen surat perintah tugas pegawai</p>
+        </div>
+        <button onclick="openModal('addSuratModal')" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-colors shadow-sm text-sm font-medium">
             <i class='bx bx-plus'></i> Buat Surat Tugas
         </button>
     </div>
 
     <!-- Form Pencarian -->
-    <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-4">
+    <div class="card p-4">
         <form action="" method="GET" class="flex gap-2">
             <div class="relative flex-1">
                 <i class='bx bx-search absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400'></i>
@@ -685,29 +688,29 @@ include '../includes/header.php';
     </div>
 
     <!-- Tabel Surat Tugas -->
-    <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+    <div class="card overflow-hidden">
         <div class="overflow-x-auto">
             <?php if (count($surat_tugas) > 0): ?>
-                <table class="w-full text-left border-collapse" id="tabelSurat">
+                <table class="w-full text-left table-premium" id="tabelSurat">
                     <thead>
-                        <tr class="bg-slate-50 text-slate-600 text-xs uppercase tracking-wider">
-                            <th class="px-3 py-3 font-semibold border-b border-slate-100 w-8" title="Lihat detail">
+                        <tr>
+                            <th class="w-8" title="Lihat detail">
                                 <i class='bx bx-detail text-slate-400'></i>
                             </th>
-                            <th class="px-3 py-3 font-semibold border-b border-slate-100">Nomor Surat</th>
-                            <th class="px-3 py-3 font-semibold border-b border-slate-100 cursor-pointer select-none sortable-header" data-sort="tanggal" data-order="">
+                            <th>Nomor Surat</th>
+                            <th class="cursor-pointer select-none sortable-header" data-sort="tanggal" data-order="">
                                 <span class="inline-flex items-center gap-1">Tanggal <i class='bx bx-sort-alt-2 text-slate-400 sort-icon'></i></span>
                             </th>
-                            <th class="px-3 py-3 font-semibold border-b border-slate-100" style="min-width:240px;">Untuk</th>
-                            <th class="px-3 py-3 font-semibold border-b border-slate-100">Pegawai</th>
-                            <th class="px-3 py-3 font-semibold border-b border-slate-100 cursor-pointer select-none sortable-header" data-sort="pelaksanaan" data-order="">
+                            <th style="min-width:240px;">Untuk</th>
+                            <th>Pegawai</th>
+                            <th class="cursor-pointer select-none sortable-header" data-sort="pelaksanaan" data-order="">
                                 <span class="inline-flex items-center gap-1">Pelaksanaan <i class='bx bx-sort-alt-2 text-slate-400 sort-icon'></i></span>
                             </th>
-                            <th class="px-3 py-3 font-semibold border-b border-slate-100">Tipe</th>
-                            <th class="px-3 py-3 font-semibold border-b border-slate-100 text-right">Aksi</th>
+                            <th>Tipe</th>
+                            <th class="text-right">Aksi</th>
                         </tr>
                     </thead>
-                    <tbody class="divide-y divide-slate-100">
+                    <tbody>
                         <?php
     $no = $start + 1;
     foreach ($surat_tugas as $st):
@@ -734,11 +737,11 @@ include '../includes/header.php';
         
         $tipe_surat = isset($st['tipe_surat']) ? $st['tipe_surat'] : 'umum';
 ?>
-                            <tr class="hover:bg-slate-50 transition-colors group surat-row" 
+                            <tr class="group surat-row" 
                                 data-tipe="<?php echo htmlspecialchars($tipe_surat); ?>"
                                 data-tanggal="<?php echo $st['tanggal_surat']; ?>"
                                 data-mulai="<?php echo $st['tanggal_mulai']; ?>">
-                                <td class="px-3 py-2">
+                                <td>
                                     <button onclick="toggleDetails('details-<?php echo $st['id']; ?>')" 
                                         class="text-indigo-600 hover:text-indigo-800 transition-transform transform duration-200" 
                                         id="btn-details-<?php echo $st['id']; ?>"
@@ -747,39 +750,38 @@ include '../includes/header.php';
                                         <i class='bx bx-chevron-down text-lg transition-transform duration-200'></i>
                                     </button>
                                 </td>
-                                <td class="px-3 py-2 text-sm font-medium text-slate-900"><?php echo htmlspecialchars($st['nomor_surat']); ?></td>
-                                <td class="px-3 py-2 text-sm text-slate-600"><?php echo date('d/m/Y', strtotime($st['tanggal_surat'])); ?></td>
-                                <td class="px-3 py-2 text-sm text-slate-600">
+                                <td class="font-medium text-gray-900"><?php echo htmlspecialchars($st['nomor_surat']); ?></td>
+                                <td class="text-gray-500"><?php echo date('d/m/Y', strtotime($st['tanggal_surat'])); ?></td>
+                                <td class="text-gray-600">
                                     <span class="block truncate" style="max-width:320px;" title="<?php echo htmlspecialchars($st['untuk']); ?>">
                                         <?php echo htmlspecialchars(mb_strlen($st['untuk']) > 80 ? mb_substr($st['untuk'], 0, 80) . '...' : $st['untuk']); ?>
                                     </span>
                                 </td>
-                                <td class="px-3 py-2 text-sm text-slate-600">
-                                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-indigo-100 text-indigo-800 cursor-default"
-                                        title="<?php echo $tooltip_pegawai; ?>">
+                                <td>
+                                    <span class="badge badge-indigo cursor-default" title="<?php echo $tooltip_pegawai; ?>">
                                         <?php echo $jumlah_pegawai; ?> Pegawai
                                     </span>
                                 </td>
-                                <td class="px-3 py-2 text-sm text-slate-600 whitespace-nowrap">
+                                <td class="text-gray-500 whitespace-nowrap">
                                     <?php echo date('d/m/Y', strtotime($st['tanggal_mulai'])) . ' - ' . date('d/m/Y', strtotime($st['tanggal_selesai'])); ?>
                                 </td>
-                                <td class="px-3 py-2 text-sm">
+                                <td>
                                     <?php if ($tipe_surat === 'penyuluh'): ?>
-                                        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-800">
+                                        <span class="badge badge-emerald">
                                             <i class='bx bx-leaf mr-1'></i>Penyuluh
                                         </span>
                                     <?php else: ?>
-                                        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                                        <span class="badge badge-blue">
                                             <i class='bx bx-briefcase mr-1'></i>Umum
                                         </span>
                                     <?php endif; ?>
                                 </td>
-                                <td class="px-3 py-2 text-sm text-right">
-                                    <div class="inline-flex items-center gap-2">
-                                        <button class="text-blue-500 hover:text-blue-600 transition-colors" title="Generate Surat" onclick="generateSurat(<?php echo $st['id']; ?>)">
-                                            <i class='bx bx-file text-lg'></i>
+                                <td class="text-right">
+                                    <div class="inline-flex items-center gap-1.5">
+                                        <button class="btn-action primary" title="Generate Surat" onclick="generateSurat(<?php echo $st['id']; ?>)">
+                                            <i class='bx bx-file'></i>
                                         </button>
-                                        <button class="text-amber-500 hover:text-amber-600 edit-btn transition-colors" title="Edit" 
+                                        <button class="btn-action warning edit-btn" title="Edit" 
                                             data-id="<?php echo $st['id']; ?>"
                                             data-nomor="<?php echo htmlspecialchars($st['nomor_surat']); ?>"
                                             data-tanggal="<?php echo $st['tanggal_surat']; ?>"
@@ -789,10 +791,10 @@ include '../includes/header.php';
                                             data-selesai="<?php echo $st['tanggal_selesai']; ?>"
                                             data-penandatangan="<?php echo isset($st['id_penandatangan']) ? $st['id_penandatangan'] : ''; ?>"
                                             data-tipe="<?php echo htmlspecialchars($tipe_surat); ?>">
-                                            <i class='bx bx-edit text-lg'></i>
+                                            <i class='bx bx-edit'></i>
                                         </button>
-                                        <button class="text-red-500 hover:text-red-600 delete-btn transition-colors" title="Hapus" data-id="<?php echo $st['id']; ?>">
-                                            <i class='bx bx-trash text-lg'></i>
+                                        <button class="btn-action danger delete-btn" title="Hapus" data-id="<?php echo $st['id']; ?>">
+                                            <i class='bx bx-trash'></i>
                                         </button>
                                     </div>
                                 </td>

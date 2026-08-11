@@ -1,16 +1,9 @@
                 </div>
             </main>
 
-            <!-- Footer -->
-            <footer class="bg-white border-t border-gray-200 pt-3 mt-4 pb-6">
-                <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col md:flex-row justify-between items-center gap-4">
-                    <p class="text-slate-500 text-sm text-center md:text-left">
-                        &copy; <?php echo date('Y'); ?> Sistem Pengelolaan Surat Tugas.
-                    </p>
-                    <p class="text-slate-400 text-xs text-center md:text-right">
-                        Versi 1.0 | Dikembangkan oleh Tim SIPENSURAT
-                    </p>
-                </div>
+            <!-- Footer minimal -->
+            <footer class="px-8 py-2.5 border-t border-gray-100 bg-white flex-shrink-0">
+                <p class="text-xs text-gray-300 text-right">SIPENSURAT v1.0</p>
             </footer>
         </div>
     </div>

@@ -377,139 +377,144 @@ include '../includes/header.php';
 
 <div class="space-y-6">
     <div class="flex flex-col md:flex-row justify-between items-center gap-4">
-        <h2 class="text-2xl font-bold text-slate-800">Buku Nomor Surat Tugas</h2>
+        <div>
+            <h1 class="page-header-title">Buku Nomor Surat Tugas</h1>
+            <p class="page-header-sub">Penomoran dan alokasi slot surat tugas</p>
+        </div>
         <div class="flex gap-2">
-            <button onclick="openModal('spaceModal')" class="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-colors shadow-sm">
+            <button onclick="openModal('spaceModal')" class="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-colors shadow-sm text-sm font-medium">
                 <i class='bx bx-grid-alt'></i> Buat Space 10 Nomor
             </button>
-            <button onclick="openModal('reserveModal')" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-colors shadow-sm">
+            <button onclick="openModal('reserveModal')" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-colors shadow-sm text-sm font-medium">
                 <i class='bx bx-plus'></i> Tambah Slot Kosong
             </button>
         </div>
     </div>
 
     <?php if (isset($_GET['ok'])): ?>
-        <div class="bg-emerald-50 border border-emerald-200 text-emerald-700 px-4 py-3 rounded-lg">
+        <div class="bg-emerald-50 border border-emerald-200 text-emerald-700 px-4 py-3 rounded-lg text-sm">
             <?php echo isset($_GET['msg']) ? htmlspecialchars((string)$_GET['msg']) : 'Perubahan buku nomor berhasil disimpan.'; ?>
         </div>
     <?php endif; ?>
     <?php if (isset($_GET['error'])): ?>
-        <div class="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">
+        <div class="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">
             <?php echo htmlspecialchars((string)$_GET['error']); ?>
         </div>
     <?php endif; ?>
 
-    <div class="bg-indigo-50 border border-indigo-200 text-indigo-800 px-4 py-3 rounded-lg flex flex-col sm:flex-row sm:flex-wrap sm:items-baseline gap-1 sm:gap-x-6 gap-y-1">
+    <div class="card p-4 bg-indigo-50/50 border-indigo-100 text-indigo-900 flex flex-col sm:flex-row sm:flex-wrap sm:items-baseline gap-1 sm:gap-x-6 gap-y-1 text-sm">
         <span>
-            Nomor terakhir tahun <?php echo $tahun; ?>: <span class="font-semibold"><?php echo $lastNomorTahun; ?></span>
-            <span class="text-indigo-600 text-xs ml-2">(nomor baru akan lanjut dari <?php echo $lastNomorTahun + 1; ?>)</span>
+            Nomor terakhir tahun <?php echo $tahun; ?>: <span class="font-semibold text-indigo-700"><?php echo $lastNomorTahun; ?></span>
+            <span class="text-indigo-500 text-xs ml-2">(nomor baru akan lanjut dari <?php echo $lastNomorTahun + 1; ?>)</span>
         </span>
         <span class="text-sm">
             Tanggal terakhir pada buku (tahun <?php echo $tahun; ?>):
-            <span class="font-semibold"><?php echo $lastTanggalTahun !== null ? htmlspecialchars(date('d/m/Y', strtotime($lastTanggalTahun))) : '—'; ?></span>
-            <span class="text-indigo-600 text-xs ml-1">(tanggal surat tertinggi yang tercatat)</span>
+            <span class="font-semibold text-indigo-700"><?php echo $lastTanggalTahun !== null ? htmlspecialchars(date('d/m/Y', strtotime($lastTanggalTahun))) : '—'; ?></span>
+            <span class="text-indigo-500 text-xs ml-1">(tanggal surat tertinggi yang tercatat)</span>
         </span>
     </div>
 
-    <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-4">
+    <div class="card p-4">
         <form method="GET" class="space-y-3">
             <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                 <div>
-                    <label class="block text-sm text-slate-600 mb-1">Tahun</label>
-                    <input type="number" name="tahun" value="<?php echo $tahun; ?>" class="w-full px-3 py-2 border border-slate-300 rounded-lg">
+                    <label class="block text-xs font-medium text-gray-500 mb-1">Tahun</label>
+                    <input type="number" name="tahun" value="<?php echo $tahun; ?>" class="input-premium py-1.5">
                 </div>
                 <div>
-                    <label class="block text-sm text-slate-600 mb-1">Status</label>
-                    <select name="status" class="w-full px-3 py-2 border border-slate-300 rounded-lg">
+                    <label class="block text-xs font-medium text-gray-500 mb-1">Status</label>
+                    <select name="status" class="input-premium py-1.5">
                         <option value="">Semua</option>
                         <option value="kosong" <?php echo $status === 'kosong' ? 'selected' : ''; ?>>Kosong</option>
                         <option value="terisi" <?php echo $status === 'terisi' ? 'selected' : ''; ?>>Terisi</option>
                     </select>
                 </div>
                 <div>
-                    <label class="block text-sm text-slate-600 mb-1">Tanggal surat dari</label>
-                    <input type="date" name="tanggal_dari" value="<?php echo htmlspecialchars($tanggalDariInput); ?>" class="w-full px-3 py-2 border border-slate-300 rounded-lg">
+                    <label class="block text-xs font-medium text-gray-500 mb-1">Tanggal surat dari</label>
+                    <input type="date" name="tanggal_dari" value="<?php echo htmlspecialchars($tanggalDariInput); ?>" class="input-premium py-1.5">
                 </div>
                 <div>
-                    <label class="block text-sm text-slate-600 mb-1">Tanggal surat sampai</label>
-                    <input type="date" name="tanggal_sampai" value="<?php echo htmlspecialchars($tanggalSampaiInput); ?>" class="w-full px-3 py-2 border border-slate-300 rounded-lg">
+                    <label class="block text-xs font-medium text-gray-500 mb-1">Tanggal surat sampai</label>
+                    <input type="date" name="tanggal_sampai" value="<?php echo htmlspecialchars($tanggalSampaiInput); ?>" class="input-premium py-1.5">
                 </div>
             </div>
             <div class="grid grid-cols-1 md:grid-cols-4 gap-3">
                 <div class="md:col-span-2">
-                    <label class="block text-sm text-slate-600 mb-1">Cari Nomor/Keterangan</label>
-                    <input type="text" name="search" value="<?php echo htmlspecialchars($search); ?>" class="w-full px-3 py-2 border border-slate-300 rounded-lg">
+                    <label class="block text-xs font-medium text-gray-500 mb-1">Cari Nomor/Keterangan</label>
+                    <input type="text" name="search" value="<?php echo htmlspecialchars($search); ?>" class="input-premium py-1.5">
                 </div>
                 <div class="flex items-end gap-2 md:col-span-2">
-                    <button type="submit" class="bg-slate-800 hover:bg-slate-900 text-white px-4 py-2 rounded-lg">Tampilkan</button>
-                    <a href="buku-nomor.php?tahun=<?php echo date('Y'); ?>" class="bg-slate-200 hover:bg-slate-300 text-slate-700 px-4 py-2 rounded-lg">Reset</a>
+                    <button type="submit" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors">Tampilkan</button>
+                    <a href="buku-nomor.php?tahun=<?php echo date('Y'); ?>" class="bg-gray-100 hover:bg-gray-200 text-gray-700 px-4 py-2 rounded-lg text-sm font-medium transition-colors">Reset</a>
                 </div>
             </div>
-            <p class="text-xs text-slate-500">Berdasarkan tanggal surat; entri tanpa tanggal tidak tampil saat filter tanggal aktif. Boleh isi hanya "dari" atau hanya "sampai".</p>
+            <p class="text-xs text-gray-400">Berdasarkan tanggal surat; entri tanpa tanggal tidak tampil saat filter tanggal aktif. Boleh isi hanya "dari" atau hanya "sampai".</p>
         </form>
     </div>
 
-    <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+    <div class="card overflow-hidden">
         <div class="overflow-x-auto">
-            <table class="w-full text-left border-collapse">
+            <table class="w-full text-left table-premium">
                 <thead>
-                    <tr class="bg-slate-50 text-slate-600 text-sm uppercase tracking-wider">
-                        <th class="px-4 py-3 border-b border-slate-100">No</th>
-                        <th class="px-4 py-3 border-b border-slate-100">Nomor</th>
-                        <th class="px-4 py-3 border-b border-slate-100">Tanggal Surat</th>
-                        <th class="px-4 py-3 border-b border-slate-100">Status</th>
-                        <th class="px-4 py-3 border-b border-slate-100">Tujuan/Keterangan</th>
-                        <th class="px-4 py-3 border-b border-slate-100 text-right">Aksi</th>
+                    <tr>
+                        <th style="width: 50px;">No</th>
+                        <th>Nomor</th>
+                        <th>Tanggal Surat</th>
+                        <th>Status</th>
+                        <th>Tujuan/Keterangan</th>
+                        <th class="text-right">Aksi</th>
                     </tr>
                 </thead>
-                <tbody class="divide-y divide-slate-100">
+                <tbody>
                     <?php if (count($rows) > 0): ?>
                         <?php $no = $start + 1; foreach ($rows as $r): ?>
-                            <tr class="hover:bg-slate-50">
-                                <td class="px-4 py-3 text-sm text-slate-600"><?php echo $no++; ?></td>
-                                <td class="px-4 py-3 text-sm font-semibold text-slate-800"><?php echo htmlspecialchars($r['nomor_surat']); ?></td>
-                                <td class="px-4 py-3 text-sm text-slate-600">
+                            <tr>
+                                <td class="text-gray-500"><?php echo $no++; ?></td>
+                                <td class="font-semibold text-gray-900"><?php echo htmlspecialchars($r['nomor_surat']); ?></td>
+                                <td class="text-gray-500">
                                     <?php echo !empty($r['tanggal_surat']) ? date('d/m/Y', strtotime($r['tanggal_surat'])) : '-'; ?>
                                 </td>
-                                <td class="px-4 py-3 text-sm">
+                                <td>
                                     <?php
-                                        $badge = 'bg-slate-100 text-slate-700';
-                                        if ($r['status'] === 'terisi') $badge = 'bg-emerald-100 text-emerald-700';
-                                        if ($r['status'] !== 'terisi') $badge = 'bg-blue-100 text-blue-700';
+                                        $badge = 'badge-gray';
+                                        if ($r['status'] === 'terisi') $badge = 'badge-green';
+                                        elseif ($r['status'] === 'kosong') $badge = 'badge-blue';
                                     ?>
-                                    <span class="inline-flex px-2.5 py-0.5 rounded-full text-xs font-medium <?php echo $badge; ?>">
+                                    <span class="badge <?php echo $badge; ?>">
                                         <?php echo ucfirst($r['status']); ?>
                                     </span>
                                 </td>
-                                <td class="px-4 py-3 text-sm text-slate-600">
+                                <td class="text-gray-600">
                                     <?php
                                         $desc = $r['untuk'] ?: $r['keterangan'];
                                         echo htmlspecialchars($desc ?: '-');
                                     ?>
                                 </td>
-                                <td class="px-4 py-3 text-sm text-right">
+                                <td class="text-right">
                                     <?php if (empty($r['id_surat_tugas'])): ?>
-                                        <div class="inline-flex gap-2">
+                                        <div class="inline-flex gap-1.5">
                                             <form method="POST" class="inline">
                                                 <input type="hidden" name="action" value="set_status">
                                                 <input type="hidden" name="id" value="<?php echo (int)$r['id']; ?>">
                                                 <input type="hidden" name="status" value="kosong">
-                                                <button type="submit" class="px-2 py-1 text-xs bg-slate-200 hover:bg-slate-300 text-slate-700 rounded">Kosongkan</button>
+                                                <button type="submit" class="btn-action">Kosongkan</button>
                                             </form>
                                             <form method="POST" class="inline" onsubmit="return confirm('Hapus nomor ini dari buku nomor?');">
                                                 <input type="hidden" name="action" value="delete_slot">
                                                 <input type="hidden" name="id" value="<?php echo (int)$r['id']; ?>">
-                                                <button type="submit" class="px-2 py-1 text-xs bg-red-100 hover:bg-red-200 text-red-700 rounded">Hapus</button>
+                                                <button type="submit" class="btn-action danger">Hapus</button>
                                             </form>
                                         </div>
                                     <?php else: ?>
-                                        <a href="generate-surat.php?id=<?php echo (int)$r['id_surat_tugas']; ?>" class="text-indigo-600 hover:text-indigo-700 text-xs">Lihat Surat</a>
+                                        <a href="generate-surat.php?id=<?php echo (int)$r['id_surat_tugas']; ?>" class="btn-action primary">
+                                            <i class='bx bx-show'></i> Lihat Surat
+                                        </a>
                                     <?php endif; ?>
                                 </td>
                             </tr>
                         <?php endforeach; ?>
                     <?php else: ?>
-                        <tr><td colspan="6" class="px-4 py-8 text-center text-slate-500">Belum ada data buku nomor.</td></tr>
+                        <tr><td colspan="6" class="px-4 py-8 text-center text-gray-400">Belum ada data buku nomor.</td></tr>
                     <?php endif; ?>
                 </tbody>
             </table>

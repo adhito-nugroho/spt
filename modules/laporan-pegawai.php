@@ -480,34 +480,35 @@ include '../includes/header.php';
 
 <div class="space-y-6">
     <div class="flex flex-col md:flex-row justify-between items-center gap-4 print:hidden">
-        <h2 class="text-2xl font-bold text-slate-800">Laporan Surat Tugas Per Pegawai</h2>
+        <div>
+            <h1 class="page-header-title">Laporan Surat Tugas Per Pegawai</h1>
+            <p class="page-header-sub">Rekapitulasi riwayat penugasan per individu pegawai</p>
+        </div>
         <div class="flex gap-2">
-            <a href="?start_date=<?php echo urlencode($start_date); ?>&end_date=<?php echo urlencode($end_date); ?>&nip=<?php echo urlencode($filter_nip); ?>&export=excel" class="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-colors shadow-sm">
-                <i class='bx bx-spreadsheet'></i> Export Excel
+            <a href="?start_date=<?php echo urlencode($start_date); ?>&end_date=<?php echo urlencode($end_date); ?>&nip=<?php echo urlencode($filter_nip); ?>&export=excel" class="btn-action hover:border-emerald-300 text-emerald-700 bg-emerald-50 hover:bg-emerald-100">
+                <i class='bx bx-spreadsheet text-base'></i> Export Excel
             </a>
-            <a href="?start_date=<?php echo urlencode($start_date); ?>&end_date=<?php echo urlencode($end_date); ?>&nip=<?php echo urlencode($filter_nip); ?>&export=pdf" target="_blank" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-colors shadow-sm">
-                <i class='bx bx-printer'></i> Cetak Laporan
+            <a href="?start_date=<?php echo urlencode($start_date); ?>&end_date=<?php echo urlencode($end_date); ?>&nip=<?php echo urlencode($filter_nip); ?>&export=pdf" target="_blank" class="btn-action primary">
+                <i class='bx bx-printer text-base'></i> Cetak Laporan
             </a>
         </div>
     </div>
 
     <!-- Filter Section (Hidden on Print) -->
-    <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-4 print:hidden">
+    <div class="card p-4 print:hidden">
         <form action="" method="GET" class="space-y-4">
             <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
-                    <label class="block text-sm font-medium text-slate-700 mb-1">Dari Tanggal</label>
-                    <input type="date" name="start_date" value="<?php echo $start_date; ?>" 
-                        class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none">
+                    <label class="block text-xs font-medium text-gray-500 mb-1">Dari Tanggal</label>
+                    <input type="date" name="start_date" value="<?php echo $start_date; ?>" class="input-premium py-1.5">
                 </div>
                 <div>
-                    <label class="block text-sm font-medium text-slate-700 mb-1">Sampai Tanggal</label>
-                    <input type="date" name="end_date" value="<?php echo $end_date; ?>" 
-                        class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none">
+                    <label class="block text-xs font-medium text-gray-500 mb-1">Sampai Tanggal</label>
+                    <input type="date" name="end_date" value="<?php echo $end_date; ?>" class="input-premium py-1.5">
                 </div>
                 <div>
-                    <label class="block text-sm font-medium text-slate-700 mb-1">Pegawai (Opsional)</label>
-                    <select name="nip" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none">
+                    <label class="block text-xs font-medium text-gray-500 mb-1">Pegawai (Opsional)</label>
+                    <select name="nip" class="input-premium py-1.5">
                         <option value="">Semua Pegawai</option>
                         <?php foreach ($daftar_pegawai as $peg): ?>
                             <option value="<?php echo $peg['nip']; ?>" <?php echo ($filter_nip == $peg['nip']) ? 'selected' : ''; ?>>
@@ -518,6 +519,15 @@ include '../includes/header.php';
                 </div>
             </div>
             <div class="flex gap-2">
+                <button type="submit" class="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2 rounded-lg text-sm font-medium transition-colors">
+                    Tampilkan Laporan
+                </button>
+                <a href="laporan-pegawai.php" class="bg-gray-100 hover:bg-gray-200 text-gray-700 px-4 py-2 rounded-lg text-sm font-medium transition-colors">
+                    Reset
+                </a>
+            </div>
+        </form>
+    </div>
                 <button type="submit" class="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2 rounded-lg transition-colors">
                     <i class='bx bx-search mr-2'></i> Tampilkan
                 </button>
