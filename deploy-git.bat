@@ -70,7 +70,7 @@ echo [2/3] Menjalankan 'git pull' di server via SSH...
 echo *(Jika diminta password SSH, masukkan password akun server)*
 echo.
 
-ssh -p %SERVER_PORT% %SERVER_USER%@%SERVER_IP% "cmd /c cd /d %REMOTE_DIR% && %REMOTE_GIT% pull origin %BRANCH%"
+ssh -p %SERVER_PORT% %SERVER_USER%@%SERVER_IP% "C:\Windows\System32\cmd.exe /c cd /d %REMOTE_DIR% && %REMOTE_GIT% pull origin %BRANCH%"
 
 if errorlevel 1 (
     echo.
@@ -78,7 +78,7 @@ if errorlevel 1 (
     echo Pastikan:
     echo   - SSH tunnel Cloudflare aktif
     echo   - Direktori %REMOTE_DIR% ada di server
-    echo   - Repository sudah di-clone di server
+    echo   - Repository sudah di-clone di server (jalankan setup-server.bat jika belum)
     pause
     exit /b 1
 )
@@ -89,7 +89,7 @@ echo Git Pull di server berhasil!
 echo.
 echo [3/3] Menjalankan migrasi database di server...
 
-ssh -p %SERVER_PORT% %SERVER_USER%@%SERVER_IP% "cmd /c cd /d %REMOTE_DIR% && %REMOTE_PHP% migrate.php"
+ssh -p %SERVER_PORT% %SERVER_USER%@%SERVER_IP% "C:\Windows\System32\cmd.exe /c cd /d %REMOTE_DIR% && %REMOTE_PHP% migrate.php"
 
 if errorlevel 1 (
     echo.
