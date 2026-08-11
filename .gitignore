@@ -1,0 +1,32 @@
+# === Dependensi ===
+/vendor/
+/node_modules/
+
+# === File environment & konfigurasi sensitif ===
+.env
+*.env
+config/local.php
+
+# === File temporary & cache ===
+/tmp/
+*.log
+*.tmp
+db_export_temp.sql
+
+# === File hasil generate ===
+temp_output.docx
+/docs/*.pdf
+
+# === OS & editor ===
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# === Upload user (optional, uncomment jika ada folder uploads) ===
+# /uploads/
+
+# === Composer (lock file tetap di-track) ===
+# composer.lock  <-- tetap di track agar deploy konsisten
