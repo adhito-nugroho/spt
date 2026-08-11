@@ -70,7 +70,7 @@ echo [2/3] Menjalankan 'git pull' di server via SSH...
 echo *(Jika diminta password SSH, masukkan password akun server)*
 echo.
 
-ssh -p %SERVER_PORT% %SERVER_USER%@%SERVER_IP% "cd /d %REMOTE_DIR% && %REMOTE_GIT% pull origin %BRANCH%"
+ssh -p %SERVER_PORT% %SERVER_USER%@%SERVER_IP% "%REMOTE_GIT% config --global --add safe.directory %REMOTE_DIR:\=/% && cd /d %REMOTE_DIR% && %REMOTE_GIT% pull origin %BRANCH%"
 
 if errorlevel 1 (
     echo.
