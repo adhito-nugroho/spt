@@ -643,6 +643,145 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             exit;
         }
 
+        if ($_POST['action'] === 'bulk_delete') {
+            $bukuIds = $_POST['buku_ids'] ?? [];
+            if (!is_array($bukuIds) || empty($bukuIds)) {
+                throw new Exception('Pilih setidaknya satu nomor yang ingin dihapus.');
+            }
+            $bukuIds = array_values(array_filter(array_map('intval', $bukuIds), function($v) { return $v > 0; }));
+            if (empty($bukuIds)) {
+                throw new Exception('Daftar ID nomor tidak valid.');
+            }
+
+            $placeholders = implode(',', array_fill(0, count($bukuIds), '?'));
+            $pdo->beginTransaction();
+            try {
+                // Cari relasi id_surat_keluar yang terisi
+                $stmt = $pdo->prepare("SELECT id, id_surat_keluar FROM buku_nomor_surat_keluar WHERE id IN ($placeholders)");
+                $stmt->execute($bukuIds);
+                $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+                $suratIds = [];
+                foreach ($rows as $r) {
+                    if (!empty($r['id_surat_keluar'])) {
+                        $suratIds[] = (int)$r['id_surat_keluar'];
+                    }
+                }
+
+                $filesToDelete = [];
+                if (!empty($suratIds)) {
+                    $suratPlaceholders = implode(',', array_fill(0, count($suratIds), '?'));
+                    $stmtFiles = $pdo->prepare("SELECT file_pdf FROM surat_keluar WHERE id IN ($suratPlaceholders)");
+                    $stmtFiles->execute($suratIds);
+                    $filesToDelete = $stmtFiles->fetchAll(PDO::FETCH_COLUMN);
+
+                    $stmtDelSurat = $pdo->prepare("DELETE FROM surat_keluar WHERE id IN ($suratPlaceholders)");
+                    $stmtDelSurat->execute($suratIds);
+                }
+
+                $stmtDelBuku = $pdo->prepare("DELETE FROM buku_nomor_surat_keluar WHERE id IN ($placeholders)");
+                $stmtDelBuku->execute($bukuIds);
+                $deletedCount = $stmtDelBuku->rowCount();
+
+                $pdo->commit();
+
+                foreach ($filesToDelete as $file) {
+                    if ($file) {
+                        $deletedPath = __DIR__ . '/../assets/surat_keluar_pdf/' . basename((string)$file);
+                        if (is_file($deletedPath)) {
+                            @unlink($deletedPath);
+                        }
+                    }
+                }
+            } catch (Throwable $e) {
+                if ($pdo->inTransaction()) {
+                    $pdo->rollBack();
+                }
+                throw $e;
+            }
+            $tahunRedirect = (int)($_POST['current_tahun'] ?? date('Y'));
+            header('Location: surat-keluar.php?tahun=' . $tahunRedirect . '&ok=' . urlencode("Berhasil menghapus {$deletedCount} nomor sekaligus."));
+            exit;
+        }
+
+        if ($_POST['action'] === 'delete_range') {
+            $tahunRange = (int)($_POST['tahun'] ?? date('Y'));
+            $nomorDari = (int)($_POST['nomor_dari'] ?? 0);
+            $nomorSampai = (int)($_POST['nomor_sampai'] ?? 0);
+            $hanyaKosong = !isset($_POST['include_terisi']) || $_POST['include_terisi'] !== '1';
+
+            if ($tahunRange < 1900) {
+                throw new Exception('Tahun tidak valid.');
+            }
+            if ($nomorDari <= 0 || $nomorSampai <= 0) {
+                throw new Exception('Nomor awal dan nomor akhir harus angka lebih besar dari 0.');
+            }
+            if ($nomorDari > $nomorSampai) {
+                throw new Exception('Nomor awal tidak boleh lebih besar dari nomor akhir.');
+            }
+
+            $pdo->beginTransaction();
+            try {
+                if ($hanyaKosong) {
+                    $stmt = $pdo->prepare("DELETE FROM buku_nomor_surat_keluar
+                        WHERE tahun = ? AND nomor_urut BETWEEN ? AND ? AND id_surat_keluar IS NULL");
+                    $stmt->execute([$tahunRange, $nomorDari, $nomorSampai]);
+                    $deletedCount = $stmt->rowCount();
+                } else {
+                    $stmt = $pdo->prepare("SELECT id, id_surat_keluar FROM buku_nomor_surat_keluar
+                        WHERE tahun = ? AND nomor_urut BETWEEN ? AND ?");
+                    $stmt->execute([$tahunRange, $nomorDari, $nomorSampai]);
+                    $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+                    $suratIds = [];
+                    $bukuIds = [];
+                    foreach ($rows as $r) {
+                        $bukuIds[] = (int)$r['id'];
+                        if (!empty($r['id_surat_keluar'])) {
+                            $suratIds[] = (int)$r['id_surat_keluar'];
+                        }
+                    }
+
+                    $filesToDelete = [];
+                    if (!empty($suratIds)) {
+                        $suratPlaceholders = implode(',', array_fill(0, count($suratIds), '?'));
+                        $stmtFiles = $pdo->prepare("SELECT file_pdf FROM surat_keluar WHERE id IN ($suratPlaceholders)");
+                        $stmtFiles->execute($suratIds);
+                        $filesToDelete = $stmtFiles->fetchAll(PDO::FETCH_COLUMN);
+
+                        $stmtDelSurat = $pdo->prepare("DELETE FROM surat_keluar WHERE id IN ($suratPlaceholders)");
+                        $stmtDelSurat->execute($suratIds);
+                    }
+
+                    if (!empty($bukuIds)) {
+                        $bukuPlaceholders = implode(',', array_fill(0, count($bukuIds), '?'));
+                        $stmtDelBuku = $pdo->prepare("DELETE FROM buku_nomor_surat_keluar WHERE id IN ($bukuPlaceholders)");
+                        $stmtDelBuku->execute($bukuIds);
+                        $deletedCount = $stmtDelBuku->rowCount();
+                    } else {
+                        $deletedCount = 0;
+                    }
+
+                    foreach ($filesToDelete as $file) {
+                        if ($file) {
+                            $deletedPath = __DIR__ . '/../assets/surat_keluar_pdf/' . basename((string)$file);
+                            if (is_file($deletedPath)) {
+                                @unlink($deletedPath);
+                            }
+                        }
+                    }
+                }
+                $pdo->commit();
+            } catch (Throwable $e) {
+                if ($pdo->inTransaction()) {
+                    $pdo->rollBack();
+                }
+                throw $e;
+            }
+            header('Location: surat-keluar.php?tahun=' . $tahunRange . '&ok=' . urlencode("Berhasil menghapus {$deletedCount} nomor dalam rentang {$nomorDari} s/d {$nomorSampai}."));
+            exit;
+        }
+
         if ($_POST['action'] === 'create_space_tanggal') {
             $tanggal = parseTanggalSurat($_POST['tanggal_surat'] ?? '');
             $jumlah = (int)($_POST['jumlah_space'] ?? 10);
@@ -859,7 +998,7 @@ include '../includes/header.php';
                     Lainnya ▾
                 </button>
                 <!-- Dropdown Menu -->
-                <div id="headerDropdownMenu" class="absolute right-0 mt-2 w-48 rounded-lg shadow-lg bg-white border border-gray-100 divide-y divide-gray-100 z-50 hidden">
+                <div id="headerDropdownMenu" class="absolute right-0 mt-2 w-52 rounded-lg shadow-lg bg-white border border-gray-100 divide-y divide-gray-100 z-50 hidden">
                     <div class="py-1">
                         <button onclick="openModal('spaceModal'); document.getElementById('headerDropdownMenu').classList.add('hidden')" class="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2 transition-colors">
                             <i class='bx bx-grid-alt text-gray-400'></i> Buat Space
@@ -869,6 +1008,11 @@ include '../includes/header.php';
                         </button>
                         <button onclick="openModal('importModal'); document.getElementById('headerDropdownMenu').classList.add('hidden')" class="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2 transition-colors">
                             <i class='bx bx-upload text-gray-400'></i> Import Data
+                        </button>
+                    </div>
+                    <div class="py-1">
+                        <button onclick="openDeleteRangeModal(); document.getElementById('headerDropdownMenu').classList.add('hidden')" class="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2 transition-colors">
+                            <i class='bx bx-trash text-red-500'></i> Hapus Rentang Nomor
                         </button>
                     </div>
                 </div>
@@ -972,6 +1116,9 @@ include '../includes/header.php';
             <table class="w-full text-left table-premium">
                 <thead>
                     <tr>
+                        <th class="w-10 px-4 py-3 text-center">
+                            <input type="checkbox" id="selectAll" class="w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer" title="Pilih Semua di Halaman Ini">
+                        </th>
                         <th class="w-12">No</th>
                         <th class="min-w-48">No. Surat</th>
                         <th class="min-w-36">Tanggal Surat</th>
@@ -1006,6 +1153,13 @@ include '../includes/header.php';
                                 }
                             ?>
                             <tr class="border-b border-gray-200 hover:bg-gray-50 group transition-colors">
+                                <td class="px-4 py-3 align-middle text-center w-10">
+                                    <input type="checkbox"
+                                           class="row-checkbox w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                                           value="<?php echo (int)$row['buku_id']; ?>"
+                                           data-nomor="<?php echo (int)$row['nomor_urut']; ?>"
+                                           data-has-surat="<?php echo !empty($row['id']) ? '1' : '0'; ?>">
+                                </td>
                                 <td class="px-4 py-3 align-middle text-sm font-semibold text-gray-800 w-12"><?php echo (int)$row['nomor_urut']; ?></td>
                                 <td class="px-4 py-3 align-middle text-sm">
                                     <div class="flex flex-col gap-1">
@@ -1090,7 +1244,7 @@ include '../includes/header.php';
                         <?php endforeach; ?>
                     <?php else: ?>
                         <tr>
-                            <td colspan="6" class="px-4 py-10 align-middle text-center text-gray-500">Belum ada data surat keluar.</td>
+                            <td colspan="7" class="px-4 py-10 align-middle text-center text-gray-500">Belum ada data surat keluar.</td>
                         </tr>
                     <?php endif; ?>
                 </tbody>
@@ -1183,6 +1337,23 @@ include '../includes/header.php';
                 </div>
             <?php endif; ?>
         </div>
+    </div>
+</div>
+
+<!-- Floating Bulk Action Bar -->
+<div id="bulkActionBar" class="fixed bottom-6 left-1/2 transform -translate-x-1/2 bg-slate-900 text-white px-5 py-3 rounded-2xl shadow-2xl flex items-center gap-4 z-40 hidden border border-slate-700">
+    <div class="flex items-center gap-2">
+        <span class="w-2.5 h-2.5 rounded-full bg-indigo-400 animate-pulse"></span>
+        <span id="selectedCount" class="font-medium text-sm">0 nomor dipilih</span>
+    </div>
+    <div class="h-4 w-px bg-slate-700"></div>
+    <div class="flex items-center gap-2">
+        <button type="button" onclick="confirmBulkDelete()" class="bg-red-600 hover:bg-red-700 text-white px-3.5 py-1.5 rounded-lg text-sm font-medium transition-colors inline-flex items-center gap-1.5 shadow-sm">
+            <i class='bx bx-trash text-base'></i> Hapus Terpilih
+        </button>
+        <button type="button" onclick="clearSelection()" class="text-slate-400 hover:text-slate-200 text-sm font-medium transition-colors px-2 py-1">
+            Batal
+        </button>
     </div>
 </div>
 
@@ -1340,6 +1511,91 @@ include '../includes/header.php';
     </div>
 </div>
 
+<!-- Modal Hapus Terpilih (Bulk Delete) -->
+<div id="bulkDeleteModal" class="fixed inset-0 z-50 hidden overflow-y-auto">
+    <div class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+        <div class="fixed inset-0 bg-slate-900 bg-opacity-75 z-0" onclick="closeModal('bulkDeleteModal')"></div>
+        <span class="hidden sm:inline-block sm:align-middle sm:h-screen">&#8203;</span>
+        <div class="relative z-10 inline-block align-bottom bg-white rounded-xl text-left overflow-hidden shadow-xl sm:my-8 sm:align-middle sm:max-w-md sm:w-full">
+            <form method="POST" class="p-6 space-y-4" id="formBulkDelete">
+                <input type="hidden" name="action" value="bulk_delete">
+                <input type="hidden" name="current_tahun" value="<?php echo $tahun; ?>">
+                <div id="bulkDeleteHiddenInputs"></div>
+
+                <div class="flex items-center gap-3 text-red-600">
+                    <div class="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center flex-shrink-0">
+                        <i class='bx bx-trash text-2xl'></i>
+                    </div>
+                    <div>
+                        <h3 class="text-lg font-semibold text-slate-900">Hapus Banyak Nomor</h3>
+                        <p class="text-xs text-slate-500">Konfirmasi penghapusan data terpilih</p>
+                    </div>
+                </div>
+
+                <div class="bg-red-50 border border-red-200 text-red-800 rounded-lg p-3 text-sm space-y-2">
+                    <p id="bulkDeleteSummary">Anda akan menghapus <strong>0 nomor</strong> yang dipilih.</p>
+                    <p class="text-xs text-red-600" id="bulkDeleteWarning">Perhatian: Slot kosong akan dihapus permanen. Data surat keluar beserta file lampiran PDF juga akan dihapus jika termasuk dalam pilihan.</p>
+                </div>
+
+                <div class="flex justify-end gap-2 pt-2">
+                    <button type="button" onclick="closeModal('bulkDeleteModal')" class="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-lg text-sm font-medium">Batal</button>
+                    <button type="submit" class="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-medium transition-colors inline-flex items-center gap-1.5">
+                        <i class='bx bx-trash'></i> Ya, Hapus Sekarang
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Hapus Rentang Nomor (Delete Range) -->
+<div id="deleteRangeModal" class="fixed inset-0 z-50 hidden overflow-y-auto">
+    <div class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+        <div class="fixed inset-0 bg-slate-900 bg-opacity-75 z-0" onclick="closeModal('deleteRangeModal')"></div>
+        <span class="hidden sm:inline-block sm:align-middle sm:h-screen">&#8203;</span>
+        <div class="relative z-10 inline-block align-bottom bg-white rounded-xl text-left overflow-hidden shadow-xl sm:my-8 sm:align-middle sm:max-w-lg sm:w-full">
+            <form method="POST" class="p-6 space-y-4">
+                <div class="flex items-center justify-between">
+                    <h3 class="text-lg font-semibold text-slate-900">Hapus Rentang Nomor Surat Keluar</h3>
+                    <button type="button" onclick="closeModal('deleteRangeModal')" class="text-slate-400 hover:text-slate-600"><i class='bx bx-x text-2xl'></i></button>
+                </div>
+                <input type="hidden" name="action" value="delete_range">
+                
+                <div>
+                    <label class="block text-sm text-slate-600 mb-1">Tahun</label>
+                    <input type="number" name="tahun" id="rangeTahun" value="<?php echo $tahun; ?>" min="1900" required class="w-full px-3 py-2 border border-slate-300 rounded-lg">
+                </div>
+
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm text-slate-600 mb-1">Dari No. Urut</label>
+                        <input type="number" name="nomor_dari" min="1" placeholder="Contoh: 10" required class="w-full px-3 py-2 border border-slate-300 rounded-lg">
+                    </div>
+                    <div>
+                        <label class="block text-sm text-slate-600 mb-1">Sampai No. Urut</label>
+                        <input type="number" name="nomor_sampai" min="1" placeholder="Contoh: 50" required class="w-full px-3 py-2 border border-slate-300 rounded-lg">
+                    </div>
+                </div>
+
+                <div class="bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm text-amber-800 space-y-2">
+                    <label class="flex items-start gap-2 cursor-pointer">
+                        <input type="checkbox" name="include_terisi" value="1" class="mt-1 rounded border-amber-300 text-red-600 focus:ring-red-500">
+                        <span class="text-xs text-amber-900">
+                            <strong>Sertakan juga nomor yang sudah terisi surat</strong> (Hati-hati: data surat dan file PDF dalam rentang tersebut akan ikut terhapus).
+                            <br><span class="text-amber-700">Jika tidak dicentang, hanya slot yang masih kosong yang akan dihapus.</span>
+                        </span>
+                    </label>
+                </div>
+
+                <div class="flex justify-end gap-2 pt-2">
+                    <button type="button" onclick="closeModal('deleteRangeModal')" class="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-lg text-sm font-medium">Batal</button>
+                    <button type="submit" class="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-medium">Hapus Rentang</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
 <script>
     function openModal(id) {
         document.getElementById(id).classList.remove('hidden');
@@ -1355,6 +1611,10 @@ include '../includes/header.php';
             if (nomorSelect) nomorSelect.disabled = false;
             if (fileInput) fileInput.value = '';
         }
+    }
+
+    function openDeleteRangeModal() {
+        openModal('deleteRangeModal');
     }
 
     function todayYmd() {
@@ -1489,6 +1749,88 @@ include '../includes/header.php';
     document.addEventListener('click', function() {
         document.getElementById('headerDropdownMenu')?.classList.add('hidden');
     });
+
+    // Checkbox and Bulk Actions Logic
+    const selectAllCheckbox = document.getElementById('selectAll');
+    const rowCheckboxes = document.querySelectorAll('.row-checkbox');
+    const bulkActionBar = document.getElementById('bulkActionBar');
+    const selectedCountSpan = document.getElementById('selectedCount');
+
+    function updateBulkActionBar() {
+        const checkedBoxes = document.querySelectorAll('.row-checkbox:checked');
+        const count = checkedBoxes.length;
+        if (count > 0) {
+            bulkActionBar.classList.remove('hidden');
+            selectedCountSpan.textContent = `${count} nomor dipilih`;
+        } else {
+            bulkActionBar.classList.add('hidden');
+        }
+
+        if (selectAllCheckbox) {
+            selectAllCheckbox.checked = rowCheckboxes.length > 0 && count === rowCheckboxes.length;
+            selectAllCheckbox.indeterminate = count > 0 && count < rowCheckboxes.length;
+        }
+    }
+
+    if (selectAllCheckbox) {
+        selectAllCheckbox.addEventListener('change', function() {
+            rowCheckboxes.forEach(cb => {
+                cb.checked = selectAllCheckbox.checked;
+            });
+            updateBulkActionBar();
+        });
+    }
+
+    rowCheckboxes.forEach(cb => {
+        cb.addEventListener('change', updateBulkActionBar);
+    });
+
+    function clearSelection() {
+        rowCheckboxes.forEach(cb => cb.checked = false);
+        if (selectAllCheckbox) {
+            selectAllCheckbox.checked = false;
+            selectAllCheckbox.indeterminate = false;
+        }
+        updateBulkActionBar();
+    }
+
+    function confirmBulkDelete() {
+        const checkedBoxes = Array.from(document.querySelectorAll('.row-checkbox:checked'));
+        if (checkedBoxes.length === 0) return;
+
+        let totalSelected = checkedBoxes.length;
+        let suratCount = 0;
+        let slotCount = 0;
+
+        const hiddenContainer = document.getElementById('bulkDeleteHiddenInputs');
+        hiddenContainer.innerHTML = '';
+
+        checkedBoxes.forEach(cb => {
+            if (cb.dataset.hasSurat === '1') {
+                suratCount++;
+            } else {
+                slotCount++;
+            }
+            const input = document.createElement('input');
+            input.type = 'hidden';
+            input.name = 'buku_ids[]';
+            input.value = cb.value;
+            hiddenContainer.appendChild(input);
+        });
+
+        let summaryText = `Anda akan menghapus <strong>${totalSelected} nomor</strong>`;
+        if (suratCount > 0 && slotCount > 0) {
+            summaryText += ` (terdiri dari <strong>${slotCount} slot kosong</strong> dan <strong>${suratCount} surat keluar</strong>).`;
+        } else if (suratCount > 0) {
+            summaryText += ` (semuanya berisi <strong>surat keluar</strong>).`;
+        } else {
+            summaryText += ` (semuanya berupa <strong>slot kosong</strong>).`;
+        }
+
+        document.getElementById('bulkDeleteSummary').innerHTML = summaryText;
+        openModal('bulkDeleteModal');
+    }
 </script>
 
 <?php include '../includes/footer.php'; ?>
+
