@@ -677,20 +677,31 @@ try {
     $durasi = $interval->days + 1;
     if (!function_exists('angkaTerbilang')) {
         function angkaTerbilang($n) {
-            $terbilang = [
-                1 => 'satu', 2 => 'dua', 3 => 'tiga', 4 => 'empat', 5 => 'lima',
-                6 => 'enam', 7 => 'tujuh', 8 => 'delapan', 9 => 'sembilan', 10 => 'sepuluh',
-                11 => 'sebelas', 12 => 'dua belas', 13 => 'tiga belas', 14 => 'empat belas',
-                15 => 'lima belas', 16 => 'enam belas', 17 => 'tujuh belas', 18 => 'delapan belas',
-                19 => 'sembilan belas', 20 => 'dua puluh', 30 => 'tiga puluh'
-            ];
-            if (isset($terbilang[$n])) return $terbilang[$n];
-            if ($n < 100) {
-                $puluhan = floor($n / 10) * 10;
+            $n = abs((int)$n);
+            $dasar = ['', 'satu', 'dua', 'tiga', 'empat', 'lima', 'enam', 'tujuh', 'delapan', 'sembilan', 'sepuluh', 'sebelas'];
+            
+            if ($n < 12) {
+                return $dasar[$n];
+            } elseif ($n < 20) {
+                return $dasar[$n - 10] . ' belas';
+            } elseif ($n < 100) {
+                $puluh = (int)floor($n / 10);
                 $sisa = $n % 10;
-                return $terbilang[$puluhan] . ' ' . $terbilang[$sisa];
+                return trim($dasar[$puluh] . ' puluh ' . ($sisa ? $dasar[$sisa] : ''));
+            } elseif ($n < 200) {
+                return trim('seratus ' . ($n - 100 > 0 ? angkaTerbilang($n - 100) : ''));
+            } elseif ($n < 1000) {
+                $ratus = (int)floor($n / 100);
+                $sisa = $n % 100;
+                return trim($dasar[$ratus] . ' ratus ' . ($sisa ? angkaTerbilang($sisa) : ''));
+            } elseif ($n < 2000) {
+                return trim('seribu ' . ($n - 1000 > 0 ? angkaTerbilang($n - 1000) : ''));
+            } elseif ($n < 1000000) {
+                $ribu = (int)floor($n / 1000);
+                $sisa = $n % 1000;
+                return trim(angkaTerbilang($ribu) . ' ribu ' . ($sisa ? angkaTerbilang($sisa) : ''));
             }
-            return $n;
+            return (string)$n;
         }
     }
     if ($surat['tanggal_mulai'] == $surat['tanggal_selesai']) {
@@ -1110,6 +1121,9 @@ foreach ($tempCandidates as $candidate) {
                 }
 
                 @unlink($tempDocx);
+                if (ob_get_length()) {
+                    ob_clean();
+                }
                 header('Content-Type: application/pdf');
                 if ($inlinePdf) {
                     header('Content-Disposition: inline; filename="Surat_Tugas_' . preg_replace('/[^a-zA-Z0-9\-_]/', '_', $surat['nomor_surat']) . '.pdf"');
@@ -1127,6 +1141,9 @@ foreach ($tempCandidates as $candidate) {
         }
 
         // format=docx: unduh file Word
+        if (ob_get_length()) {
+            ob_clean();
+        }
         header('Content-Type: application/vnd.openxmlformats-officedocument.wordprocessingml.document');
         header('Content-Disposition: attachment; filename="Surat_Tugas_' . $surat['nomor_surat'] . '.docx"');
         header('Content-Length: ' . filesize($tempDocx));
