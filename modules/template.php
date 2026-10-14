@@ -16,6 +16,23 @@ try {
     } catch (PDOException $e2) {}
 }
 
+// Pastikan kolom berlaku_mulai ada di tabel templates (versi template pra/pasca PAPBD).
+// NULL = template lama, berlaku untuk semua tanggal surat.
+// Tanggal terisi = template berlaku mulai tanggal tersebut (mis. 2026-10-13 untuk dasar baru PAPBD).
+// Logika pilih template di generate-surat.php: hanya template dengan
+// berlaku_mulai IS NULL atau berlaku_mulai <= tanggal_surat yang dipakai,
+// diurutkan berlaku_mulai terbaru dulu sehingga surat lama tetap pakai template lama.
+try {
+    $pdo->query("SELECT berlaku_mulai FROM templates LIMIT 1");
+} catch (PDOException $e) {
+    try {
+        $pdo->exec("ALTER TABLE templates ADD COLUMN berlaku_mulai DATE DEFAULT NULL AFTER tipe_surat");
+    } catch (PDOException $e2) {}
+    try {
+        $pdo->exec("ALTER TABLE templates ADD INDEX idx_berlaku (kategori_template, tipe_surat, berlaku_mulai, is_default)");
+    } catch (PDOException $e3) {}
+}
+
 // Handle JSON responses (harus sebelum include header)
 if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['action'])) {
     // Set Default Template
@@ -25,17 +42,20 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['action'])) {
             $pdo->beginTransaction();
             
             // Ambil kategori template yang akan di-set sebagai default
-            $stmt = $pdo->prepare("SELECT kategori_template, tipe_surat FROM templates WHERE id = ?");
+            $stmt = $pdo->prepare("SELECT kategori_template, tipe_surat, berlaku_mulai FROM templates WHERE id = ?");
             $stmt->execute([$_POST['id']]);
             $template = $stmt->fetch();
-            
+
             if (!$template) {
                 throw new Exception('Template tidak ditemukan');
             }
-            
-            // Set semua template dalam kategori dan tipe yang sama menjadi non-default
-            $stmt_update = $pdo->prepare("UPDATE templates SET is_default = 0 WHERE kategori_template = ? AND tipe_surat = ?");
-            $stmt_update->execute([$template['kategori_template'], $template['tipe_surat'] ?? 'umum']);
+
+            // Set semua template dalam kombinasi kategori + tipe + masa berlaku yang sama
+            // menjadi non-default. Masa berlaku ikut jadi scope (<=> null-safe) agar
+            // template lama (pra-PAPBD) dan template baru (pasca-PAPBD) masing-masing
+            // tetap punya satu default dan tidak saling menonaktifkan.
+            $stmt_update = $pdo->prepare("UPDATE templates SET is_default = 0 WHERE kategori_template = ? AND tipe_surat = ? AND berlaku_mulai <=> ?");
+            $stmt_update->execute([$template['kategori_template'], $template['tipe_surat'] ?? 'umum', $template['berlaku_mulai'] ?? null]);
             
             // Set template yang dipilih menjadi default
             $stmt = $pdo->prepare("UPDATE templates SET is_default = 1 WHERE id = ?");
@@ -135,6 +155,17 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['action']) && $_POST['a
             throw new Exception('Tipe surat tidak valid.');
         }
 
+        // Tanggal berlaku mulai (opsional). Kosong = template lama, berlaku untuk semua tanggal.
+        // Isi 2026-10-13 untuk template dasar baru pasca-PAPBD.
+        $berlaku_mulai = null;
+        if (isset($_POST['berlaku_mulai']) && trim($_POST['berlaku_mulai']) !== '') {
+            $d = DateTime::createFromFormat('Y-m-d', trim($_POST['berlaku_mulai']));
+            if (!$d || $d->format('Y-m-d') !== trim($_POST['berlaku_mulai'])) {
+                throw new Exception('Tanggal Berlaku Mulai tidak valid (format YYYY-MM-DD).');
+            }
+            $berlaku_mulai = $d->format('Y-m-d');
+        }
+
         // Ambil data template lama
         $stmt = $pdo->prepare("SELECT * FROM templates WHERE id = ?");
         $stmt->execute([$id]);
@@ -179,18 +210,19 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['action']) && $_POST['a
             $ukuran_file = $file['size'];
         }
 
-        // Jika set sebagai default, reset yang lain di kategori dan tipe yang sama
+        // Jika set sebagai default, reset yang lain di kombinasi kategori + tipe + masa berlaku yang sama
         if ($is_default) {
-            $stmt_update = $pdo->prepare("UPDATE templates SET is_default = 0 WHERE kategori_template = ? AND tipe_surat = ?");
-            $stmt_update->execute([$kategori_template, $tipe_surat]);
+            $stmt_update = $pdo->prepare("UPDATE templates SET is_default = 0 WHERE kategori_template = ? AND tipe_surat = ? AND berlaku_mulai <=> ?");
+            $stmt_update->execute([$kategori_template, $tipe_surat, $berlaku_mulai]);
         }
 
         // Update database
-        $stmt = $pdo->prepare("UPDATE templates SET nama = ?, kategori_template = ?, tipe_surat = ?, nama_file = ?, path_file = ?, ukuran_file = ?, is_default = ?, deskripsi = ? WHERE id = ?");
+        $stmt = $pdo->prepare("UPDATE templates SET nama = ?, kategori_template = ?, tipe_surat = ?, berlaku_mulai = ?, nama_file = ?, path_file = ?, ukuran_file = ?, is_default = ?, deskripsi = ? WHERE id = ?");
         $stmt->execute([
             $nama_template,
             $kategori_template,
             $tipe_surat,
+            $berlaku_mulai,
             $nama_file,
             '../assets/templates/' . $nama_file,
             $ukuran_file,
@@ -274,14 +306,25 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['action']) && $_POST['a
             throw new Exception('Tipe surat tidak valid.');
         }
 
+        // Tanggal berlaku mulai (opsional). Kosong = template lama, berlaku untuk semua tanggal.
+        // Isi 2026-10-13 untuk template dasar baru pasca-PAPBD.
+        $berlaku_mulai = null;
+        if (isset($_POST['berlaku_mulai']) && trim($_POST['berlaku_mulai']) !== '') {
+            $d = DateTime::createFromFormat('Y-m-d', trim($_POST['berlaku_mulai']));
+            if (!$d || $d->format('Y-m-d') !== trim($_POST['berlaku_mulai'])) {
+                throw new Exception('Tanggal Berlaku Mulai tidak valid (format YYYY-MM-DD).');
+            }
+            $berlaku_mulai = $d->format('Y-m-d');
+        }
+
         // Simpan ke database
         $is_default = isset($_POST['is_default']) && $_POST['is_default'] == '1' ? 1 : 0;
         $deskripsi = isset($_POST['deskripsi']) ? trim($_POST['deskripsi']) : '';
 
-        // Jika ini template default, set yang lain dalam kategori dan tipe yang sama menjadi non-default
+        // Jika ini template default, set yang lain dalam kombinasi kategori + tipe + masa berlaku yang sama menjadi non-default
         if ($is_default) {
-            $stmt_update = $pdo->prepare("UPDATE templates SET is_default = 0 WHERE kategori_template = ? AND tipe_surat = ?");
-            $stmt_update->execute([$kategori_template, $tipe_surat]);
+            $stmt_update = $pdo->prepare("UPDATE templates SET is_default = 0 WHERE kategori_template = ? AND tipe_surat = ? AND berlaku_mulai <=> ?");
+            $stmt_update->execute([$kategori_template, $tipe_surat, $berlaku_mulai]);
         }
 
         // Cek apakah kolom kategori_template sudah ada, jika belum tambahkan
@@ -296,12 +339,13 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['action']) && $_POST['a
             }
         }
 
-        $stmt = $pdo->prepare("INSERT INTO templates (nama, kategori_template, tipe_surat, nama_file, path_file, ukuran_file, is_default, deskripsi) 
-                               VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
+        $stmt = $pdo->prepare("INSERT INTO templates (nama, kategori_template, tipe_surat, berlaku_mulai, nama_file, path_file, ukuran_file, is_default, deskripsi)
+                               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
         $stmt->execute([
             $nama_template,
             $kategori_template,
             $tipe_surat,
+            $berlaku_mulai,
             $nama_file,
             '../assets/templates/' . $nama_file,
             $file['size'],
@@ -348,7 +392,7 @@ try {
         }
     }
     
-    $stmt = $pdo->query("SELECT * FROM templates ORDER BY kategori_template, tipe_surat, is_default DESC, created_at DESC");
+    $stmt = $pdo->query("SELECT * FROM templates ORDER BY kategori_template, tipe_surat, berlaku_mulai IS NULL DESC, berlaku_mulai ASC, is_default DESC, created_at DESC");
     $templates = $stmt->fetchAll();
 } catch (PDOException $e) {
     // Jika tabel belum ada, buat tabel
@@ -358,6 +402,7 @@ try {
             nama VARCHAR(255) NOT NULL,
             kategori_template ENUM('1_pegawai', '2_pegawai', '3_pegawai', 'banyak_pegawai') NOT NULL DEFAULT 'banyak_pegawai',
             tipe_surat VARCHAR(20) NOT NULL DEFAULT 'umum',
+            berlaku_mulai DATE DEFAULT NULL,
             nama_file VARCHAR(255) NOT NULL,
             path_file VARCHAR(500) NOT NULL,
             ukuran_file BIGINT NOT NULL,
@@ -365,7 +410,8 @@ try {
             deskripsi TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-            INDEX idx_kategori_tipe (kategori_template, tipe_surat, is_default)
+            INDEX idx_kategori_tipe (kategori_template, tipe_surat, is_default),
+            INDEX idx_berlaku (kategori_template, tipe_surat, berlaku_mulai, is_default)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci";
         $pdo->exec($sql);
         $templates = [];
@@ -397,6 +443,17 @@ try {
         </div>
     </div>
 
+    <!-- Info Box PAPBD / Versi Template -->
+    <div class="card p-4 bg-amber-50/60 border-amber-200 text-amber-900">
+        <div class="flex items-start gap-3">
+            <i class='bx bx-calendar-check text-amber-600 text-xl mt-0.5'></i>
+            <div class="text-sm">
+                <p class="font-semibold text-amber-950 mb-1">Template Dasar Lama vs Dasar Baru (PAPBD 13 Oktober 2026)</p>
+                <p class="text-amber-800">Surat tugas dengan <strong>tanggal surat sebelum 13/10/2026</strong> otomatis memakai template <strong>lama</strong> (kolom Berlaku Mulai dikosongkan). Surat dengan <strong>tanggal surat 13/10/2026 atau sesudahnya</strong> otomatis memakai template <strong>dasar baru PAPBD</strong> (upload file template baru dan isi <strong>Berlaku Mulai = 2026-10-13</strong>). Template lama jangan dihapus agar arsip surat lama tetap bisa di-generate ulang. Setiap kombinasi kategori + tipe + masa berlaku memiliki satu template default masing-masing.</p>
+            </div>
+        </div>
+    </div>
+
     <!-- Daftar Template -->
     <div class="card overflow-hidden">
         <?php if (count($templates) > 0): ?>
@@ -408,6 +465,7 @@ try {
                             <th>Nama Template</th>
                             <th>Kategori</th>
                             <th>Tipe</th>
+                            <th>Berlaku Mulai</th>
                             <th>File</th>
                             <th>Ukuran</th>
                             <th>Status</th>
@@ -450,6 +508,20 @@ try {
                                         </span>
                                     <?php endif; ?>
                                 </td>
+                                <td class="px-6 py-4 text-sm">
+                                    <?php
+                                    $berlaku = isset($template['berlaku_mulai']) ? $template['berlaku_mulai'] : null;
+                                    if (!empty($berlaku)):
+                                    ?>
+                                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800" title="Dipakai untuk surat bertanggal <?php echo date('d/m/Y', strtotime($berlaku)); ?> atau sesudahnya (dasar baru)">
+                                            <i class='bx bx-calendar-check mr-1'></i><?php echo date('d/m/Y', strtotime($berlaku)); ?>+
+                                        </span>
+                                    <?php else: ?>
+                                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-600" title="Template lama — dipakai untuk surat sebelum ada template baru yang berlaku">
+                                            <i class='bx bx-history mr-1'></i>Lama
+                                        </span>
+                                    <?php endif; ?>
+                                </td>
                                 <td class="px-6 py-4 text-sm text-slate-600">
                                     <div class="flex items-center gap-2">
                                         <i class='bx bx-file text-indigo-600'></i>
@@ -487,6 +559,7 @@ try {
                                                 data-nama="<?php echo htmlspecialchars($template['nama']); ?>"
                                                 data-kategori="<?php echo htmlspecialchars($template['kategori_template'] ?? 'banyak_pegawai'); ?>"
                                                 data-tipe="<?php echo htmlspecialchars($template['tipe_surat'] ?? 'umum'); ?>"
+                                                data-berlaku="<?php echo htmlspecialchars($template['berlaku_mulai'] ?? ''); ?>"
                                                 data-deskripsi="<?php echo htmlspecialchars($template['deskripsi'] ?? ''); ?>"
                                                 data-default="<?php echo $template['is_default']; ?>"
                                                 data-file="<?php echo htmlspecialchars($template['nama_file']); ?>"
@@ -566,6 +639,11 @@ try {
                             <p class="text-xs text-slate-500 mt-1">Template akan digunakan sesuai tipe surat tugas yang dibuat</p>
                         </div>
                         <div>
+                            <label class="block text-sm font-medium text-slate-700 mb-1">Berlaku Mulai <span class="text-slate-400 font-normal">(opsional)</span></label>
+                            <input type="date" name="berlaku_mulai" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none">
+                            <p class="text-xs text-slate-500 mt-1">Kosongkan untuk template <strong>lama</strong> (berlaku untuk semua tanggal). Isi <strong>2026-10-13</strong> untuk template <strong>dasar baru PAPBD</strong> — otomatis dipakai surat bertanggal 13/10/2026 ke atas.</p>
+                        </div>
+                        <div>
                             <label class="block text-sm font-medium text-slate-700 mb-1">File Template</label>
                             <div class="mt-1 flex justify-center px-6 pt-5 pb-6 border-2 border-slate-300 border-dashed rounded-lg hover:border-indigo-400 transition-colors">
                                 <div class="space-y-1 text-center">
@@ -590,7 +668,7 @@ try {
                         <div class="flex items-center">
                             <input type="checkbox" name="is_default" value="1" id="is_default" class="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-slate-300 rounded">
                             <label for="is_default" class="ml-2 block text-sm text-slate-700">
-                                Set sebagai template default untuk kombinasi kategori dan tipe ini
+                                Set sebagai template default untuk kombinasi kategori, tipe, dan masa berlaku ini
                             </label>
                         </div>
                     </div>
@@ -642,6 +720,11 @@ try {
                             </select>
                         </div>
                         <div>
+                            <label class="block text-sm font-medium text-slate-700 mb-1">Berlaku Mulai <span class="text-slate-400 font-normal">(opsional)</span></label>
+                            <input type="date" name="berlaku_mulai" id="edit-template-berlaku" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none">
+                            <p class="text-xs text-slate-500 mt-1">Kosongkan untuk template <strong>lama</strong>. Isi <strong>2026-10-13</strong> untuk template <strong>dasar baru PAPBD</strong>.</p>
+                        </div>
+                        <div>
                             <label class="block text-sm font-medium text-slate-700 mb-1">Ganti File Template</label>
                             <div class="bg-slate-50 rounded-lg p-3 mb-2 border border-slate-200">
                                 <div class="flex items-center gap-2 text-sm text-slate-600">
@@ -672,7 +755,7 @@ try {
                         <div class="flex items-center">
                             <input type="checkbox" name="is_default" value="1" id="edit_is_default" class="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-slate-300 rounded">
                             <label for="edit_is_default" class="ml-2 block text-sm text-slate-700">
-                                Set sebagai template default untuk kombinasi kategori dan tipe ini
+                                Set sebagai template default untuk kombinasi kategori, tipe, dan masa berlaku ini
                             </label>
                         </div>
                     </div>
@@ -778,6 +861,7 @@ try {
             document.getElementById('edit-template-nama').value = this.dataset.nama;
             document.getElementById('edit-template-kategori').value = this.dataset.kategori;
             document.getElementById('edit-template-tipe').value = this.dataset.tipe || 'umum';
+            document.getElementById('edit-template-berlaku').value = this.dataset.berlaku || '';
             document.getElementById('edit-template-deskripsi').value = this.dataset.deskripsi;
             document.getElementById('edit_is_default').checked = this.dataset.default === '1';
             document.getElementById('edit-current-file').textContent = this.dataset.file;

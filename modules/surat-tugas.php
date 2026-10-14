@@ -199,6 +199,21 @@ catch (PDOException $e) {
 $stmt_pt = $pdo->query("SELECT * FROM penandatangan WHERE aktif = 1 ORDER BY is_default DESC, nama ASC");
 $penandatangan_list = $stmt_pt->fetchAll();
 
+// Tanggal cutoff PAPBD: diambil dari template dengan Berlaku Mulai paling awal.
+// Surat bertanggal >= cutoff memakai template dasar baru; sebelumnya memakai template lama.
+// null = belum ada template dasar baru yang di-upload.
+$tanggal_papbd = null;
+try {
+    $pdo->query("SELECT berlaku_mulai FROM templates LIMIT 1");
+    $stmt_cut = $pdo->query("SELECT MIN(berlaku_mulai) AS cutoff FROM templates WHERE berlaku_mulai IS NOT NULL");
+    $row_cut = $stmt_cut ? $stmt_cut->fetch() : null;
+    if ($row_cut && !empty($row_cut['cutoff'])) {
+        $tanggal_papbd = $row_cut['cutoff'];
+    }
+} catch (PDOException $e) {
+    $tanggal_papbd = null;
+}
+
 // Konfigurasi Pencarian
 $search = isset($_GET['search']) ? $_GET['search'] : '';
 $search_condition = '';
@@ -751,7 +766,20 @@ include '../includes/header.php';
                                     </button>
                                 </td>
                                 <td class="font-medium text-gray-900"><?php echo htmlspecialchars($st['nomor_surat']); ?></td>
-                                <td class="text-gray-500"><?php echo date('d/m/Y', strtotime($st['tanggal_surat'])); ?></td>
+                                <td class="text-gray-500">
+                                    <span class="block"><?php echo date('d/m/Y', strtotime($st['tanggal_surat'])); ?></span>
+                                    <?php if (!empty($tanggal_papbd)): ?>
+                                        <?php if ($st['tanggal_surat'] >= $tanggal_papbd): ?>
+                                            <span class="inline-flex items-center px-2 py-0.5 mt-1 rounded-full text-[11px] font-medium bg-amber-100 text-amber-800" title="Memakai template dasar baru (berlaku mulai <?php echo date('d/m/Y', strtotime($tanggal_papbd)); ?>)">
+                                                <i class='bx bx-calendar-check mr-1'></i>Dasar Baru
+                                            </span>
+                                        <?php else: ?>
+                                            <span class="inline-flex items-center px-2 py-0.5 mt-1 rounded-full text-[11px] font-medium bg-slate-100 text-slate-600" title="Memakai template dasar lama (pra-PAPBD)">
+                                                <i class='bx bx-history mr-1'></i>Lama
+                                            </span>
+                                        <?php endif; ?>
+                                    <?php endif; ?>
+                                </td>
                                 <td class="text-gray-600">
                                     <span class="block truncate" style="max-width:320px;" title="<?php echo htmlspecialchars($st['untuk']); ?>">
                                         <?php echo htmlspecialchars(mb_strlen($st['untuk']) > 80 ? mb_substr($st['untuk'], 0, 80) . '...' : $st['untuk']); ?>
@@ -947,6 +975,7 @@ endif; ?>
                             <p class="text-xs text-slate-500 mt-1">Nomor diambil dari slot kosong pada tanggal yang dipilih.</p>
                         </div>
                     </div>
+                    <div id="info-versi-template" class="mb-4 hidden rounded-lg border px-4 py-3 text-sm"></div>
                     <div class="mb-4">
                         <label class="block text-sm font-medium text-slate-700 mb-2">
                             <i class='bx bx-category text-indigo-500 mr-1'></i>Tipe Surat Tugas <span class="text-red-500">*</span>
@@ -1066,6 +1095,7 @@ endif; ?>
                             <input type="date" name="tanggal_surat" id="edit-tanggal" required class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none">
                         </div>
                     </div>
+                    <div id="info-versi-template-edit" class="mb-4 hidden rounded-lg border px-4 py-3 text-sm"></div>
                     <div class="mb-4">
                         <label class="block text-sm font-medium text-slate-700 mb-2">
                             <i class='bx bx-category text-indigo-500 mr-1'></i>Tipe Surat Tugas <span class="text-red-500">*</span>
@@ -1236,6 +1266,7 @@ endforeach; ?>
         document.getElementById(modalId).classList.remove('hidden');
         if (modalId === 'addSuratModal') {
             loadNomorKosongByTanggal();
+            updateInfoVersiTemplateAdd();
         }
     }
 
@@ -1451,8 +1482,43 @@ endforeach; ?>
         });
     });
 
+    // Cutoff PAPBD dari server (tanggal Berlaku Mulai paling awal di tabel templates).
+    // Surat bertanggal >= cutoff memakai template dasar baru; sebelumnya memakai template lama.
+    const TANGGAL_PAPBD = <?php echo !empty($tanggal_papbd) ? json_encode($tanggal_papbd) : 'null'; ?>;
+    const TANGGAL_PAPBD_LABEL = <?php echo !empty($tanggal_papbd) ? json_encode(date('d/m/Y', strtotime($tanggal_papbd))) : 'null'; ?>;
+
+    function renderInfoVersiTemplate(elId, tanggalSurat) {
+        const el = document.getElementById(elId);
+        if (!el) return;
+        if (!TANGGAL_PAPBD || !tanggalSurat) {
+            el.classList.add('hidden');
+            el.innerHTML = '';
+            return;
+        }
+        el.classList.remove('hidden');
+        if (tanggalSurat >= TANGGAL_PAPBD) {
+            el.className = 'mb-4 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900';
+            el.innerHTML = `<strong><i class='bx bx-calendar-check'></i> Template dasar baru (PAPBD)</strong> — tanggal surat ${tanggalSurat.split('-').reverse().join('/')} ≥ ${TANGGAL_PAPBD_LABEL}, saat generate akan memakai template yang berlaku mulai ${TANGGAL_PAPBD_LABEL}.`;
+        } else {
+            el.className = 'mb-4 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700';
+            el.innerHTML = `<strong><i class='bx bx-history'></i> Template dasar lama</strong> — tanggal surat sebelum ${TANGGAL_PAPBD_LABEL}, saat generate tetap memakai template lama.`;
+        }
+    }
+
+    function updateInfoVersiTemplateAdd() {
+        const t = document.getElementById('add-tanggal-surat');
+        renderInfoVersiTemplate('info-versi-template', t ? t.value : '');
+    }
+
+    function updateInfoVersiTemplateEdit() {
+        const t = document.getElementById('edit-tanggal');
+        renderInfoVersiTemplate('info-versi-template-edit', t ? t.value : '');
+    }
+
     // Nomor surat by tanggal
     document.getElementById('add-tanggal-surat')?.addEventListener('change', loadNomorKosongByTanggal);
+    document.getElementById('add-tanggal-surat')?.addEventListener('change', updateInfoVersiTemplateAdd);
+    document.getElementById('edit-tanggal')?.addEventListener('change', updateInfoVersiTemplateEdit);
     
     // Submit handler formTambah dengan validasi
     document.getElementById('formTambah')?.addEventListener('submit', function(e) {
@@ -1489,6 +1555,7 @@ endforeach; ?>
                 document.getElementById('edit-id').value = id;
                 document.getElementById('edit-nomor').value = this.dataset.nomor;
                 document.getElementById('edit-tanggal').value = this.dataset.tanggal;
+                updateInfoVersiTemplateEdit();
                 document.getElementById('edit-dasar').value = this.dataset.dasar;
                 document.getElementById('edit-untuk').value = this.dataset.untuk;
                 document.getElementById('edit-mulai').value = this.dataset.mulai;

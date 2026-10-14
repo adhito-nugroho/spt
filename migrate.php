@@ -18,7 +18,7 @@ try {
     echo "✓ Terhubung ke database dengan sukses.\n\n";
 
     // 1. Migration: Kolom urutan pada tabel pegawai_tugas
-    echo "[1/4] Memeriksa tabel 'pegawai_tugas'...\n";
+    echo "[1/5] Memeriksa tabel 'pegawai_tugas'...\n";
     $stmt = $pdo->query("SHOW COLUMNS FROM pegawai_tugas LIKE 'urutan'");
     $colUrutan = $stmt->fetch();
     if (!$colUrutan) {
@@ -44,7 +44,7 @@ try {
     }
 
     // 2. Migration: Kolom file_pdf pada tabel surat_keluar
-    echo "\n[2/4] Memeriksa tabel 'surat_keluar'...\n";
+    echo "\n[2/5] Memeriksa tabel 'surat_keluar'...\n";
     $stmt = $pdo->query("SHOW TABLES LIKE 'surat_keluar'");
     if ($stmt->fetch()) {
         $stmtCol = $pdo->query("SHOW COLUMNS FROM surat_keluar LIKE 'file_pdf'");
@@ -59,7 +59,7 @@ try {
     }
 
     // 3. Migration: Tabel buku_nomor_surat_tugas
-    echo "\n[3/4] Memeriksa tabel 'buku_nomor_surat_tugas'...\n";
+    echo "\n[3/5] Memeriksa tabel 'buku_nomor_surat_tugas'...\n";
     $pdo->exec("CREATE TABLE IF NOT EXISTS buku_nomor_surat_tugas (
         id INT AUTO_INCREMENT PRIMARY KEY,
         tahun INT NOT NULL,
@@ -88,7 +88,7 @@ try {
     echo "  ✓ Tabel 'buku_nomor_surat_tugas' siap.\n";
 
     // 4. Migration: Tabel buku_nomor_surat_keluar
-    echo "\n[4/4] Memeriksa tabel 'buku_nomor_surat_keluar'...\n";
+    echo "\n[4/5] Memeriksa tabel 'buku_nomor_surat_keluar'...\n";
     $pdo->exec("CREATE TABLE IF NOT EXISTS buku_nomor_surat_keluar (
         id INT AUTO_INCREMENT PRIMARY KEY,
         tahun INT NOT NULL,
@@ -104,6 +104,27 @@ try {
         INDEX idx_status_tanggal (status, tanggal_surat)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
     echo "  ✓ Tabel 'buku_nomor_surat_keluar' siap.\n";
+
+    // 5. Migration: Kolom berlaku_mulai pada tabel templates (versi template pra/pasca PAPBD)
+    // NULL = template lama, berlaku untuk semua tanggal.
+    // Tanggal terisi = template berlaku mulai tanggal tersebut (mis. 2026-10-13 untuk dasar baru PAPBD).
+    echo "\n[5/5] Memeriksa tabel 'templates'...\n";
+    $stmtCol = $pdo->query("SHOW TABLES LIKE 'templates'");
+    if ($stmtCol->fetch()) {
+        $stmtB = $pdo->query("SHOW COLUMNS FROM templates LIKE 'berlaku_mulai'");
+        if (!$stmtB->fetch()) {
+            $pdo->exec("ALTER TABLE templates ADD COLUMN berlaku_mulai DATE DEFAULT NULL AFTER tipe_surat");
+            echo "  ✓ Kolom 'berlaku_mulai' berhasil ditambahkan ke tabel templates.\n";
+        } else {
+            echo "  ℹ Kolom 'berlaku_mulai' sudah ada pada tabel templates.\n";
+        }
+        try {
+            $pdo->exec("ALTER TABLE templates ADD INDEX idx_berlaku (kategori_template, tipe_surat, berlaku_mulai, is_default)");
+        } catch (PDOException $e) {}
+        echo "  ℹ Template lama (berlaku_mulai NULL) tetap dipakai surat sebelum 13/10/2026; upload template baru dengan Berlaku Mulai 2026-10-13 untuk dasar PAPBD.\n";
+    } else {
+        echo "  ℹ Tabel 'templates' belum ada / dilewati.\n";
+    }
 
     echo "\n======================================================\n";
     echo " SEMUA MIGRASI DATABASE BERHASIL DIJALANKAN (100% OK)\n";

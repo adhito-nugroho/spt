@@ -300,6 +300,7 @@ try {
     $template_from_db = false;
     $template_nama = null;
     $template_kategori_terpilih = null;
+    $template_berlaku_mulai = null;
     
     try {
         // Cek apakah kolom kategori_template ada, jika belum tambahkan
@@ -322,25 +323,44 @@ try {
                 $pdo->exec("ALTER TABLE templates ADD COLUMN tipe_surat VARCHAR(20) NOT NULL DEFAULT 'umum' AFTER kategori_template");
             } catch (PDOException $e2) {}
         }
-        
+
+        // Cek apakah kolom berlaku_mulai ada (versi template pra/pasca PAPBD), jika belum tambahkan
+        try {
+            $pdo->query("SELECT berlaku_mulai FROM templates LIMIT 1");
+        } catch (PDOException $e) {
+            try {
+                $pdo->exec("ALTER TABLE templates ADD COLUMN berlaku_mulai DATE DEFAULT NULL AFTER tipe_surat");
+            } catch (PDOException $e2) {}
+        }
+
+        // Tanggal surat menentukan versi template yang dipakai:
+        // - berlaku_mulai IS NULL (template lama) -> berlaku untuk semua tanggal
+        // - berlaku_mulai terisi (mis. 2026-10-13, dasar baru PAPBD) -> hanya untuk
+        //   surat dengan tanggal_surat >= berlaku_mulai.
+        // Surat lama (< 2026-10-13) otomatis tetap memakai template lama.
+        $tgl_surat_key = date('Y-m-d', strtotime($surat['tanggal_surat']));
+
         // Debug: Log informasi pencarian template
         error_log("=== DEBUG TEMPLATE SELECTION ===");
         error_log("Jumlah Pegawai: " . $jumlah_pegawai);
         error_log("Kategori Template Dicari: " . $kategori_template);
         error_log("Tipe Surat: " . $tipe_surat);
+        error_log("Tanggal Surat: " . $tgl_surat_key);
         
         // Debug: Cek semua template yang ada untuk kategori dan tipe ini
-        $stmt_debug = $pdo->prepare("SELECT id, nama, kategori_template, tipe_surat, nama_file, is_default FROM templates WHERE kategori_template = ? AND tipe_surat = ?");
+        $stmt_debug = $pdo->prepare("SELECT id, nama, kategori_template, tipe_surat, berlaku_mulai, nama_file, is_default FROM templates WHERE kategori_template = ? AND tipe_surat = ?");
         $stmt_debug->execute([$kategori_template, $tipe_surat]);
         $templates_debug = $stmt_debug->fetchAll();
         error_log("Template ditemukan untuk kategori '{$kategori_template}' tipe '{$tipe_surat}': " . count($templates_debug));
         foreach ($templates_debug as $tmpl) {
-            error_log("  - ID: {$tmpl['id']}, Nama: {$tmpl['nama']}, File: {$tmpl['nama_file']}, Default: {$tmpl['is_default']}");
+            error_log("  - ID: {$tmpl['id']}, Nama: {$tmpl['nama']}, File: {$tmpl['nama_file']}, Berlaku: " . ($tmpl['berlaku_mulai'] ?? 'lama') . ", Default: {$tmpl['is_default']}");
         }
         
-        // Cari template default untuk kategori dan tipe yang sesuai
-        $stmt_template = $pdo->prepare("SELECT id, nama_file, kategori_template, tipe_surat, nama FROM templates WHERE kategori_template = ? AND tipe_surat = ? AND is_default = 1 LIMIT 1");
-        $stmt_template->execute([$kategori_template, $tipe_surat]);
+        // Cari template default untuk kategori dan tipe yang sesuai, yang sudah berlaku
+        // pada tanggal surat (template lama selalu berlaku; template baru hanya jika
+        // berlaku_mulai <= tanggal_surat). Urutan: masa berlaku terbaru dulu.
+        $stmt_template = $pdo->prepare("SELECT id, nama_file, kategori_template, tipe_surat, berlaku_mulai, nama FROM templates WHERE kategori_template = ? AND tipe_surat = ? AND is_default = 1 AND (berlaku_mulai IS NULL OR berlaku_mulai <= ?) ORDER BY berlaku_mulai IS NULL ASC, berlaku_mulai DESC LIMIT 1");
+        $stmt_template->execute([$kategori_template, $tipe_surat, $tgl_surat_key]);
         $template_default = $stmt_template->fetch();
         
         if ($template_default) {
@@ -380,7 +400,8 @@ try {
                             $template_from_db = true;
                             $template_nama = $template_default['nama'];
                             $template_kategori_terpilih = $template_default['kategori_template'];
-                            error_log("SUKSES: Template default digunakan - {$template_nama} (kategori: {$template_kategori_terpilih})");
+                            $template_berlaku_mulai = $template_default['berlaku_mulai'] ?? null;
+                            error_log("SUKSES: Template default digunakan - {$template_nama} (kategori: {$template_kategori_terpilih}, berlaku: " . ($template_berlaku_mulai ?? 'lama') . ", tgl_surat: {$tgl_surat_key})");
                         } else {
                             // Kategori tidak sesuai, skip
                             error_log("ERROR: Kategori template tidak sesuai. Ditemukan: {$template_default['kategori_template']}, Dibutuhkan: {$kategori_template}");
@@ -395,10 +416,11 @@ try {
             }
         }
         
-        // Jika tidak ada default yang valid, ambil template pertama dari kategori dan tipe tersebut
+        // Jika tidak ada default yang valid, ambil template terbaru yang sudah berlaku
+        // pada tanggal surat dari kategori dan tipe tersebut
         if (!$template_found) {
-            $stmt_template = $pdo->prepare("SELECT id, nama_file, kategori_template, tipe_surat, nama FROM templates WHERE kategori_template = ? AND tipe_surat = ? ORDER BY created_at DESC LIMIT 1");
-            $stmt_template->execute([$kategori_template, $tipe_surat]);
+            $stmt_template = $pdo->prepare("SELECT id, nama_file, kategori_template, tipe_surat, berlaku_mulai, nama FROM templates WHERE kategori_template = ? AND tipe_surat = ? AND (berlaku_mulai IS NULL OR berlaku_mulai <= ?) ORDER BY berlaku_mulai IS NULL ASC, berlaku_mulai DESC, is_default DESC, created_at DESC LIMIT 1");
+            $stmt_template->execute([$kategori_template, $tipe_surat, $tgl_surat_key]);
             $template_fallback = $stmt_template->fetch();
             
             if ($template_fallback && !empty($template_fallback['nama_file'])) {
@@ -422,7 +444,8 @@ try {
                                 $template_from_db = true;
                                 $template_nama = $template_fallback['nama'];
                                 $template_kategori_terpilih = $template_fallback['kategori_template'];
-                                error_log("SUKSES: Template fallback digunakan - {$template_nama} (kategori: {$template_kategori_terpilih})");
+                                $template_berlaku_mulai = $template_fallback['berlaku_mulai'] ?? null;
+                                error_log("SUKSES: Template fallback digunakan - {$template_nama} (kategori: {$template_kategori_terpilih}, berlaku: " . ($template_berlaku_mulai ?? 'lama') . ", tgl_surat: {$tgl_surat_key})");
                             } else {
                                 error_log("ERROR: Kategori template fallback tidak sesuai. Ditemukan: {$template_fallback['kategori_template']}, Dibutuhkan: {$kategori_template}");
                             }
@@ -438,14 +461,14 @@ try {
         if (!$template_found && $kategori_template !== 'banyak_pegawai') {
             error_log("INFO: Template untuk kategori '{$kategori_template}' tipe '{$tipe_surat}' tidak ditemukan, mencoba fallback ke 'banyak_pegawai' tipe '{$tipe_surat}'");
             
-            $stmt_fallback = $pdo->prepare("SELECT id, nama_file, kategori_template, tipe_surat, nama FROM templates WHERE kategori_template = 'banyak_pegawai' AND tipe_surat = ? AND is_default = 1 LIMIT 1");
-            $stmt_fallback->execute([$tipe_surat]);
+            $stmt_fallback = $pdo->prepare("SELECT id, nama_file, kategori_template, tipe_surat, berlaku_mulai, nama FROM templates WHERE kategori_template = 'banyak_pegawai' AND tipe_surat = ? AND is_default = 1 AND (berlaku_mulai IS NULL OR berlaku_mulai <= ?) ORDER BY berlaku_mulai IS NULL ASC, berlaku_mulai DESC LIMIT 1");
+            $stmt_fallback->execute([$tipe_surat, $tgl_surat_key]);
             $template_fallback_universal = $stmt_fallback->fetch();
             
             if (!$template_fallback_universal) {
                 // Jika tidak ada default, ambil yang pertama dengan tipe yang sama
-                $stmt_fallback = $pdo->prepare("SELECT id, nama_file, kategori_template, tipe_surat, nama FROM templates WHERE kategori_template = 'banyak_pegawai' AND tipe_surat = ? ORDER BY created_at DESC LIMIT 1");
-                $stmt_fallback->execute([$tipe_surat]);
+                $stmt_fallback = $pdo->prepare("SELECT id, nama_file, kategori_template, tipe_surat, berlaku_mulai, nama FROM templates WHERE kategori_template = 'banyak_pegawai' AND tipe_surat = ? AND (berlaku_mulai IS NULL OR berlaku_mulai <= ?) ORDER BY berlaku_mulai IS NULL ASC, berlaku_mulai DESC, is_default DESC, created_at DESC LIMIT 1");
+                $stmt_fallback->execute([$tipe_surat, $tgl_surat_key]);
                 $template_fallback_universal = $stmt_fallback->fetch();
             }
             
@@ -462,6 +485,7 @@ try {
                             $template_from_db = true;
                             $template_nama = $template_fallback_universal['nama'] . " (Fallback)";
                             $template_kategori_terpilih = $template_fallback_universal['kategori_template'];
+                            $template_berlaku_mulai = $template_fallback_universal['berlaku_mulai'] ?? null;
                             error_log("SUKSES: Menggunakan template fallback 'banyak_pegawai' tipe '{$tipe_surat}' - {$template_nama}");
                         }
                     }
@@ -473,25 +497,25 @@ try {
         if (!$template_found && $tipe_surat !== 'umum') {
             error_log("INFO: Template untuk tipe '{$tipe_surat}' tidak ditemukan, mencoba fallback ke tipe 'umum' kategori '{$kategori_template}'");
             
-            $stmt_fallback2 = $pdo->prepare("SELECT id, nama_file, kategori_template, tipe_surat, nama FROM templates WHERE kategori_template = ? AND tipe_surat = 'umum' AND is_default = 1 LIMIT 1");
-            $stmt_fallback2->execute([$kategori_template]);
+            $stmt_fallback2 = $pdo->prepare("SELECT id, nama_file, kategori_template, tipe_surat, berlaku_mulai, nama FROM templates WHERE kategori_template = ? AND tipe_surat = 'umum' AND is_default = 1 AND (berlaku_mulai IS NULL OR berlaku_mulai <= ?) ORDER BY berlaku_mulai IS NULL ASC, berlaku_mulai DESC LIMIT 1");
+            $stmt_fallback2->execute([$kategori_template, $tgl_surat_key]);
             $template_fallback2 = $stmt_fallback2->fetch();
             
             if (!$template_fallback2) {
-                $stmt_fallback2 = $pdo->prepare("SELECT id, nama_file, kategori_template, tipe_surat, nama FROM templates WHERE kategori_template = ? AND tipe_surat = 'umum' ORDER BY created_at DESC LIMIT 1");
-                $stmt_fallback2->execute([$kategori_template]);
+                $stmt_fallback2 = $pdo->prepare("SELECT id, nama_file, kategori_template, tipe_surat, berlaku_mulai, nama FROM templates WHERE kategori_template = ? AND tipe_surat = 'umum' AND (berlaku_mulai IS NULL OR berlaku_mulai <= ?) ORDER BY berlaku_mulai IS NULL ASC, berlaku_mulai DESC, is_default DESC, created_at DESC LIMIT 1");
+                $stmt_fallback2->execute([$kategori_template, $tgl_surat_key]);
                 $template_fallback2 = $stmt_fallback2->fetch();
             }
 
             if (!$template_fallback2 && $kategori_template !== 'banyak_pegawai') {
-                $stmt_fallback2 = $pdo->prepare("SELECT id, nama_file, kategori_template, tipe_surat, nama FROM templates WHERE kategori_template = 'banyak_pegawai' AND tipe_surat = 'umum' AND is_default = 1 LIMIT 1");
-                $stmt_fallback2->execute();
+                $stmt_fallback2 = $pdo->prepare("SELECT id, nama_file, kategori_template, tipe_surat, berlaku_mulai, nama FROM templates WHERE kategori_template = 'banyak_pegawai' AND tipe_surat = 'umum' AND is_default = 1 AND (berlaku_mulai IS NULL OR berlaku_mulai <= ?) ORDER BY berlaku_mulai IS NULL ASC, berlaku_mulai DESC LIMIT 1");
+                $stmt_fallback2->execute([$tgl_surat_key]);
                 $template_fallback2 = $stmt_fallback2->fetch();
             }
 
             if (!$template_fallback2 && $kategori_template !== 'banyak_pegawai') {
-                $stmt_fallback2 = $pdo->prepare("SELECT id, nama_file, kategori_template, tipe_surat, nama FROM templates WHERE kategori_template = 'banyak_pegawai' AND tipe_surat = 'umum' ORDER BY created_at DESC LIMIT 1");
-                $stmt_fallback2->execute();
+                $stmt_fallback2 = $pdo->prepare("SELECT id, nama_file, kategori_template, tipe_surat, berlaku_mulai, nama FROM templates WHERE kategori_template = 'banyak_pegawai' AND tipe_surat = 'umum' AND (berlaku_mulai IS NULL OR berlaku_mulai <= ?) ORDER BY berlaku_mulai IS NULL ASC, berlaku_mulai DESC, is_default DESC, created_at DESC LIMIT 1");
+                $stmt_fallback2->execute([$tgl_surat_key]);
                 $template_fallback2 = $stmt_fallback2->fetch();
             }
             
@@ -508,6 +532,7 @@ try {
                             $template_from_db = true;
                             $template_nama = $template_fallback2['nama'] . " (Fallback Umum)";
                             $template_kategori_terpilih = $template_fallback2['kategori_template'];
+                            $template_berlaku_mulai = $template_fallback2['berlaku_mulai'] ?? null;
                             error_log("SUKSES: Menggunakan template fallback tipe 'umum' - {$template_nama}");
                         }
                     }
@@ -523,6 +548,29 @@ try {
     // Jika template tidak ditemukan, tampilkan error sederhana
     if (!$template_found) {
         die('Error: Template untuk kategori "' . $kategori_label . '" tipe "' . $tipe_label . '" tidak ditemukan. Silakan upload template yang sesuai.');
+    }
+
+    // Info versi template terpilih untuk ditampilkan di halaman preview.
+    // $template_berlaku_mulai == null -> template lama (pra-PAPBD);
+    // terisi tanggal -> template dasar baru yang berlaku mulai tanggal tersebut.
+    $info_versi_template = null;
+    $peringatan_template_lama = false;
+    try {
+        $stmt_cut = $pdo->query("SELECT MIN(berlaku_mulai) AS cutoff FROM templates WHERE berlaku_mulai IS NOT NULL");
+        $cutoff_row = $stmt_cut ? $stmt_cut->fetch() : null;
+        $cutoff_global = ($cutoff_row && !empty($cutoff_row['cutoff'])) ? $cutoff_row['cutoff'] : null;
+    } catch (PDOException $e) {
+        $cutoff_global = null;
+    }
+    if (!empty($template_berlaku_mulai)) {
+        $info_versi_template = 'Dasar baru (berlaku mulai ' . date('d/m/Y', strtotime($template_berlaku_mulai)) . ')';
+    } else {
+        $info_versi_template = 'Dasar lama (pra-PAPBD)';
+        // Surat bertanggal sama/lewat cutoff tapi masih memakai template lama:
+        // kemungkinan template dasar baru untuk kombinasi ini belum di-upload.
+        if ($cutoff_global && $tgl_surat_key >= $cutoff_global) {
+            $peringatan_template_lama = true;
+        }
     }
 
     // Periksa apakah file template ada (double check)
@@ -980,6 +1028,31 @@ try {
                     </a>
                 </div>
             </div>
+            <?php if (!empty($template_berlaku_mulai)): ?>
+            <div class="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900 flex items-start gap-3">
+                <i class='bx bx-calendar-check text-emerald-600 text-xl mt-0.5'></i>
+                <div>
+                    <p class="font-semibold">Memakai template dasar baru (PAPBD)</p>
+                    <p>Template: <strong><?= htmlspecialchars($template_nama ?? basename($template_path)) ?></strong> — berlaku mulai <?= date('d/m/Y', strtotime($template_berlaku_mulai)) ?>, sesuai tanggal surat <?= date('d/m/Y', strtotime($surat['tanggal_surat'])) ?>.</p>
+                </div>
+            </div>
+            <?php elseif (!empty($peringatan_template_lama)): ?>
+            <div class="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 flex items-start gap-3">
+                <i class='bx bx-error text-amber-600 text-xl mt-0.5'></i>
+                <div>
+                    <p class="font-semibold">Memakai template dasar lama — perlu perhatian</p>
+                    <p>Template: <strong><?= htmlspecialchars($template_nama ?? basename($template_path)) ?></strong>. Tanggal surat (<?= date('d/m/Y', strtotime($surat['tanggal_surat'])) ?>) sudah masuk masa dasar baru PAPBD, tetapi template dasar baru untuk kombinasi kategori &ldquo;<?= htmlspecialchars($kategori_label) ?>&rdquo; tipe &ldquo;<?= htmlspecialchars($tipe_label) ?>&rdquo; belum di-upload. Segera upload di halaman Template Word dengan Berlaku Mulai <?= $cutoff_global ? date('d/m/Y', strtotime($cutoff_global)) : '13/10/2026' ?>.</p>
+                </div>
+            </div>
+            <?php else: ?>
+            <div class="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700 flex items-start gap-3">
+                <i class='bx bx-history text-slate-500 text-xl mt-0.5'></i>
+                <div>
+                    <p class="font-semibold">Memakai template dasar lama</p>
+                    <p>Template: <strong><?= htmlspecialchars($template_nama ?? basename($template_path)) ?></strong> — sesuai tanggal surat <?= date('d/m/Y', strtotime($surat['tanggal_surat'])) ?> (sebelum masa PAPBD).</p>
+                </div>
+            </div>
+            <?php endif; ?>
             <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
                 <p class="text-sm text-slate-500 px-4 py-2 border-b border-slate-200">Tampilan di bawah sama dengan file Word/PDF yang diunduh.</p>
                 <div class="p-4">
