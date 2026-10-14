@@ -18,7 +18,7 @@ try {
 
 // Pastikan kolom berlaku_mulai ada di tabel templates (versi template pra/pasca PAPBD).
 // NULL = template lama, berlaku untuk semua tanggal surat.
-// Tanggal terisi = template berlaku mulai tanggal tersebut (mis. 2026-10-13 untuk dasar baru PAPBD).
+// Tanggal terisi = template berlaku mulai tanggal tersebut (mis. tanggal berlakunya PAPBD untuk dasar baru).
 // Logika pilih template di generate-surat.php: hanya template dengan
 // berlaku_mulai IS NULL atau berlaku_mulai <= tanggal_surat yang dipakai,
 // diurutkan berlaku_mulai terbaru dulu sehingga surat lama tetap pakai template lama.
@@ -156,7 +156,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['action']) && $_POST['a
         }
 
         // Tanggal berlaku mulai (opsional). Kosong = template lama, berlaku untuk semua tanggal.
-        // Isi 2026-10-13 untuk template dasar baru pasca-PAPBD.
+        // Isi tanggal berlakunya PAPBD untuk template dasar baru pasca-PAPBD.
         $berlaku_mulai = null;
         if (isset($_POST['berlaku_mulai']) && trim($_POST['berlaku_mulai']) !== '') {
             $d = DateTime::createFromFormat('Y-m-d', trim($_POST['berlaku_mulai']));
@@ -307,7 +307,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['action']) && $_POST['a
         }
 
         // Tanggal berlaku mulai (opsional). Kosong = template lama, berlaku untuk semua tanggal.
-        // Isi 2026-10-13 untuk template dasar baru pasca-PAPBD.
+        // Isi tanggal berlakunya PAPBD untuk template dasar baru pasca-PAPBD.
         $berlaku_mulai = null;
         if (isset($_POST['berlaku_mulai']) && trim($_POST['berlaku_mulai']) !== '') {
             $d = DateTime::createFromFormat('Y-m-d', trim($_POST['berlaku_mulai']));
@@ -419,6 +419,22 @@ try {
         $templates = [];
     }
 }
+
+// Tanggal cutoff PAPBD = Berlaku Mulai paling awal di antara template yang ada.
+// Dipakai agar seluruh petunjuk di halaman ini mengikuti tanggal yang benar-benar
+// di-set saat upload (mis. 10/10/2026), bukan tanggal yang di-hardcode.
+// null = belum ada template dasar baru yang di-upload.
+$cutoff_papbd = null;
+try {
+    $stmt_cut = $pdo->query("SELECT MIN(berlaku_mulai) AS cutoff FROM templates WHERE berlaku_mulai IS NOT NULL");
+    $row_cut = $stmt_cut ? $stmt_cut->fetch() : null;
+    if ($row_cut && !empty($row_cut['cutoff'])) {
+        $cutoff_papbd = $row_cut['cutoff'];
+    }
+} catch (PDOException $e) {
+    $cutoff_papbd = null;
+}
+$cutoff_papbd_label = $cutoff_papbd ? date('d/m/Y', strtotime($cutoff_papbd)) : null;
 ?>
 
 <div class="space-y-6">
@@ -448,8 +464,12 @@ try {
         <div class="flex items-start gap-3">
             <i class='bx bx-calendar-check text-amber-600 text-xl mt-0.5'></i>
             <div class="text-sm">
-                <p class="font-semibold text-amber-950 mb-1">Template Dasar Lama vs Dasar Baru (PAPBD 13 Oktober 2026)</p>
-                <p class="text-amber-800">Surat tugas dengan <strong>tanggal surat sebelum 13/10/2026</strong> otomatis memakai template <strong>lama</strong> (kolom Berlaku Mulai dikosongkan). Surat dengan <strong>tanggal surat 13/10/2026 atau sesudahnya</strong> otomatis memakai template <strong>dasar baru PAPBD</strong> (upload file template baru dan isi <strong>Berlaku Mulai = 2026-10-13</strong>). Template lama jangan dihapus agar arsip surat lama tetap bisa di-generate ulang. Setiap kombinasi kategori + tipe + masa berlaku memiliki satu template default masing-masing.</p>
+                <p class="font-semibold text-amber-950 mb-1">Template Dasar Lama vs Dasar Baru (PAPBD<?php echo $cutoff_papbd_label ? ' — berlaku mulai ' . $cutoff_papbd_label : ''; ?>)</p>
+                <?php if ($cutoff_papbd_label): ?>
+                <p class="text-amber-800">Surat tugas dengan <strong>tanggal surat sebelum <?php echo $cutoff_papbd_label; ?></strong> otomatis memakai template <strong>lama</strong> (kolom Berlaku Mulai dikosongkan). Surat dengan <strong>tanggal surat <?php echo $cutoff_papbd_label; ?> atau sesudahnya</strong> otomatis memakai template <strong>dasar baru PAPBD</strong> (tanggal ini diambil dari kolom Berlaku Mulai paling awal di tabel di bawah — jika tanggal PAPBD berubah, cukup upload/revisi template dengan Berlaku Mulai yang baru). Template lama jangan dihapus agar arsip surat lama tetap bisa di-generate ulang. Setiap kombinasi kategori + tipe + masa berlaku memiliki satu template default masing-masing.</p>
+                <?php else: ?>
+                <p class="text-amber-800">Surat tugas otomatis memakai template sesuai <strong>tanggal suratnya</strong>: template dengan kolom Berlaku Mulai yang dikosongkan adalah template <strong>lama</strong> (dipakai surat sebelum masa PAPBD). Untuk memberlakukan <strong>dasar baru PAPBD</strong>, upload file template baru dan isi <strong>Berlaku Mulai</strong> dengan tanggal berlakunya PAPBD — surat bertanggal sama/lewat tanggal itu otomatis memakai template baru. Template lama jangan dihapus agar arsip surat lama tetap bisa di-generate ulang. Setiap kombinasi kategori + tipe + masa berlaku memiliki satu template default masing-masing.</p>
+                <?php endif; ?>
             </div>
         </div>
     </div>
@@ -641,7 +661,7 @@ try {
                         <div>
                             <label class="block text-sm font-medium text-slate-700 mb-1">Berlaku Mulai <span class="text-slate-400 font-normal">(opsional)</span></label>
                             <input type="date" name="berlaku_mulai" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none">
-                            <p class="text-xs text-slate-500 mt-1">Kosongkan untuk template <strong>lama</strong> (berlaku untuk semua tanggal). Isi <strong>2026-10-13</strong> untuk template <strong>dasar baru PAPBD</strong> — otomatis dipakai surat bertanggal 13/10/2026 ke atas.</p>
+                            <p class="text-xs text-slate-500 mt-1">Kosongkan untuk template <strong>lama</strong> (berlaku untuk semua tanggal). Isi tanggal berlakunya <strong>dasar baru PAPBD</strong><?php echo $cutoff_papbd ? ' (template PAPBD yang sudah ada memakai <strong>' . date('Y-m-d', strtotime($cutoff_papbd)) . '</strong>)' : ''; ?> — otomatis dipakai surat bertanggal sama/lebih baru.</p>
                         </div>
                         <div>
                             <label class="block text-sm font-medium text-slate-700 mb-1">File Template</label>
@@ -722,7 +742,7 @@ try {
                         <div>
                             <label class="block text-sm font-medium text-slate-700 mb-1">Berlaku Mulai <span class="text-slate-400 font-normal">(opsional)</span></label>
                             <input type="date" name="berlaku_mulai" id="edit-template-berlaku" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none">
-                            <p class="text-xs text-slate-500 mt-1">Kosongkan untuk template <strong>lama</strong>. Isi <strong>2026-10-13</strong> untuk template <strong>dasar baru PAPBD</strong>.</p>
+                            <p class="text-xs text-slate-500 mt-1">Kosongkan untuk template <strong>lama</strong>. Isi tanggal berlakunya <strong>dasar baru PAPBD</strong><?php echo $cutoff_papbd ? ' (yang sudah ada memakai <strong>' . date('Y-m-d', strtotime($cutoff_papbd)) . '</strong>)' : ''; ?>.</p>
                         </div>
                         <div>
                             <label class="block text-sm font-medium text-slate-700 mb-1">Ganti File Template</label>

@@ -335,9 +335,9 @@ try {
 
         // Tanggal surat menentukan versi template yang dipakai:
         // - berlaku_mulai IS NULL (template lama) -> berlaku untuk semua tanggal
-        // - berlaku_mulai terisi (mis. 2026-10-13, dasar baru PAPBD) -> hanya untuk
+        // - berlaku_mulai terisi (mis. tanggal berlakunya PAPBD, dasar baru) -> hanya untuk
         //   surat dengan tanggal_surat >= berlaku_mulai.
-        // Surat lama (< 2026-10-13) otomatis tetap memakai template lama.
+        // Surat bertanggal sebelum masa berlaku template baru otomatis tetap memakai template lama.
         $tgl_surat_key = date('Y-m-d', strtotime($surat['tanggal_surat']));
 
         // Debug: Log informasi pencarian template
@@ -1041,7 +1041,7 @@ try {
                 <i class='bx bx-error text-amber-600 text-xl mt-0.5'></i>
                 <div>
                     <p class="font-semibold">Memakai template dasar lama — perlu perhatian</p>
-                    <p>Template: <strong><?= htmlspecialchars($template_nama ?? basename($template_path)) ?></strong>. Tanggal surat (<?= date('d/m/Y', strtotime($surat['tanggal_surat'])) ?>) sudah masuk masa dasar baru PAPBD, tetapi template dasar baru untuk kombinasi kategori &ldquo;<?= htmlspecialchars($kategori_label) ?>&rdquo; tipe &ldquo;<?= htmlspecialchars($tipe_label) ?>&rdquo; belum di-upload. Segera upload di halaman Template Word dengan Berlaku Mulai <?= $cutoff_global ? date('d/m/Y', strtotime($cutoff_global)) : '13/10/2026' ?>.</p>
+                    <p>Template: <strong><?= htmlspecialchars($template_nama ?? basename($template_path)) ?></strong>. Tanggal surat (<?= date('d/m/Y', strtotime($surat['tanggal_surat'])) ?>) sudah masuk masa dasar baru PAPBD, tetapi template dasar baru untuk kombinasi kategori &ldquo;<?= htmlspecialchars($kategori_label) ?>&rdquo; tipe &ldquo;<?= htmlspecialchars($tipe_label) ?>&rdquo; belum di-upload. Segera upload di halaman Template Word dan isi kolom Berlaku Mulai<?= $cutoff_global ? ' dengan ' . date('d/m/Y', strtotime($cutoff_global)) : ' sesuai tanggal berlakunya PAPBD'; ?>.</p>
                 </div>
             </div>
             <?php else: ?>

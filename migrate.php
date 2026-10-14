@@ -107,7 +107,7 @@ try {
 
     // 5. Migration: Kolom berlaku_mulai pada tabel templates (versi template pra/pasca PAPBD)
     // NULL = template lama, berlaku untuk semua tanggal.
-    // Tanggal terisi = template berlaku mulai tanggal tersebut (mis. 2026-10-13 untuk dasar baru PAPBD).
+    // Tanggal terisi = template berlaku mulai tanggal tersebut (diisi tanggal berlakunya PAPBD untuk dasar baru).
     echo "\n[5/5] Memeriksa tabel 'templates'...\n";
     $stmtCol = $pdo->query("SHOW TABLES LIKE 'templates'");
     if ($stmtCol->fetch()) {
@@ -121,7 +121,7 @@ try {
         try {
             $pdo->exec("ALTER TABLE templates ADD INDEX idx_berlaku (kategori_template, tipe_surat, berlaku_mulai, is_default)");
         } catch (PDOException $e) {}
-        echo "  ℹ Template lama (berlaku_mulai NULL) tetap dipakai surat sebelum 13/10/2026; upload template baru dengan Berlaku Mulai 2026-10-13 untuk dasar PAPBD.\n";
+        echo "  ℹ Template lama (berlaku_mulai NULL) tetap dipakai surat sebelum masa PAPBD; upload template baru dengan mengisi Berlaku Mulai sesuai tanggal berlakunya PAPBD.\n";
     } else {
         echo "  ℹ Tabel 'templates' belum ada / dilewati.\n";
     }
