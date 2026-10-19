@@ -880,6 +880,7 @@ try {
     }
 
     $templateProcessor->setValue('untuk', $surat['untuk']);
+    $templateProcessor->setValue('kota_tujuan', isset($surat['kota_tujuan']) ? (string)$surat['kota_tujuan'] : '');
     $templateProcessor->setValue('waktu_pelaksanaan', $waktu_pelaksanaan);
 
     // STRATEGI PENGISIAN DATA PEGAWAI (Hybrid Approach)

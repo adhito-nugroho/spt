@@ -195,6 +195,18 @@ catch (PDOException $e) {
     }
 }
 
+// Pastikan kolom kota_tujuan ada di surat_tugas
+try {
+    $pdo->query("SELECT kota_tujuan FROM surat_tugas LIMIT 1");
+}
+catch (PDOException $e) {
+    try {
+        $pdo->exec("ALTER TABLE surat_tugas ADD COLUMN kota_tujuan VARCHAR(100) DEFAULT NULL AFTER untuk");
+    }
+    catch (PDOException $e2) {
+    }
+}
+
 // Ambil data penandatangan yang aktif
 $stmt_pt = $pdo->query("SELECT * FROM penandatangan WHERE aktif = 1 ORDER BY is_default DESC, nama ASC");
 $penandatangan_list = $stmt_pt->fetchAll();
@@ -359,14 +371,15 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['action'])) {
 
             $id_penandatangan = !empty($_POST['id_penandatangan']) ? $_POST['id_penandatangan'] : null;
 
-            $stmt = $pdo->prepare("INSERT INTO surat_tugas (nomor_surat, tanggal_surat, dasar_surat, untuk, tanggal_mulai, tanggal_selesai, id_penandatangan, tipe_surat) 
-                                    VALUES (:nomor_surat, :tanggal_surat, :dasar_surat, :untuk, :tanggal_mulai, :tanggal_selesai, :id_penandatangan, :tipe_surat)");
+            $stmt = $pdo->prepare("INSERT INTO surat_tugas (nomor_surat, tanggal_surat, dasar_surat, untuk, kota_tujuan, tanggal_mulai, tanggal_selesai, id_penandatangan, tipe_surat) 
+                                    VALUES (:nomor_surat, :tanggal_surat, :dasar_surat, :untuk, :kota_tujuan, :tanggal_mulai, :tanggal_selesai, :id_penandatangan, :tipe_surat)");
 
             $stmt->execute([
                 ':nomor_surat' => $_POST['nomor_surat'],
                 ':tanggal_surat' => $_POST['tanggal_surat'],
                 ':dasar_surat' => $_POST['dasar_surat'],
                 ':untuk' => $_POST['untuk'],
+                ':kota_tujuan' => !empty($_POST['kota_tujuan']) ? $_POST['kota_tujuan'] : null,
                 ':tanggal_mulai' => $_POST['tanggal_mulai'],
                 ':tanggal_selesai' => $_POST['tanggal_selesai'],
                 ':id_penandatangan' => $id_penandatangan,
@@ -528,6 +541,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['action'])) {
                     tanggal_surat = :tanggal_surat,
                     dasar_surat = :dasar_surat,
                     untuk = :untuk,
+                    kota_tujuan = :kota_tujuan,
                     tanggal_mulai = :tanggal_mulai,
                     tanggal_selesai = :tanggal_selesai,
                     id_penandatangan = :id_penandatangan,
@@ -540,6 +554,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['action'])) {
                 ':tanggal_surat' => $_POST['tanggal_surat'],
                 ':dasar_surat' => $_POST['dasar_surat'],
                 ':untuk' => $_POST['untuk'],
+                ':kota_tujuan' => !empty($_POST['kota_tujuan']) ? $_POST['kota_tujuan'] : null,
                 ':tanggal_mulai' => $_POST['tanggal_mulai'],
                 ':tanggal_selesai' => $_POST['tanggal_selesai'],
                 ':id_penandatangan' => $id_penandatangan_edit,
@@ -815,6 +830,7 @@ include '../includes/header.php';
                                             data-tanggal="<?php echo $st['tanggal_surat']; ?>"
                                             data-dasar="<?php echo htmlspecialchars($st['dasar_surat']); ?>"
                                             data-untuk="<?php echo htmlspecialchars($st['untuk']); ?>"
+                                            data-kota="<?php echo htmlspecialchars(isset($st['kota_tujuan']) ? $st['kota_tujuan'] : ''); ?>"
                                             data-mulai="<?php echo $st['tanggal_mulai']; ?>"
                                             data-selesai="<?php echo $st['tanggal_selesai']; ?>"
                                             data-penandatangan="<?php echo isset($st['id_penandatangan']) ? $st['id_penandatangan'] : ''; ?>"
@@ -1003,6 +1019,10 @@ endif; ?>
                         <textarea name="untuk" rows="3" required class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"></textarea>
                     </div>
                     <div class="mb-4">
+                        <label class="block text-sm font-medium text-slate-700 mb-1">Kota Tujuan</label>
+                        <input type="text" name="kota_tujuan" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none" placeholder="Contoh: Bandung">
+                    </div>
+                    <div class="mb-4">
                         <label class="block text-sm font-medium text-slate-700 mb-1">Cari & Tambah Pegawai</label>
                         <div class="mb-2">
                             <select class="select2-add-single w-full">
@@ -1120,6 +1140,10 @@ endif; ?>
                     <div class="mb-4">
                         <label class="block text-sm font-medium text-slate-700 mb-1">Untuk</label>
                         <textarea name="untuk" id="edit-untuk" rows="3" required class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"></textarea>
+                    </div>
+                    <div class="mb-4">
+                        <label class="block text-sm font-medium text-slate-700 mb-1">Kota Tujuan</label>
+                        <input type="text" name="kota_tujuan" id="edit-kota" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none" placeholder="Contoh: Bandung">
                     </div>
                     <div class="mb-4">
                         <label class="block text-sm font-medium text-slate-700 mb-1">Cari & Tambah Pegawai</label>
@@ -1558,6 +1582,7 @@ endforeach; ?>
                 updateInfoVersiTemplateEdit();
                 document.getElementById('edit-dasar').value = this.dataset.dasar;
                 document.getElementById('edit-untuk').value = this.dataset.untuk;
+                document.getElementById('edit-kota').value = this.dataset.kota || '';
                 document.getElementById('edit-mulai').value = this.dataset.mulai;
                 document.getElementById('edit-selesai').value = this.dataset.selesai;
 
