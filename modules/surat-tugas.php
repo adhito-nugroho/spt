@@ -295,6 +295,9 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['action'])) {
             if (empty($_POST['untuk'])) {
                 throw new Exception("Tujuan/maksud surat harus diisi.");
             }
+            if (empty($_POST['kota_tujuan'])) {
+                throw new Exception("Kota tujuan harus diisi.");
+            }
 
             // Validasi pegawai
             if (!isset($_POST['pegawai']) || !is_array($_POST['pegawai']) || empty($_POST['pegawai'])) {
@@ -489,6 +492,26 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['action'])) {
     }
     else if ($_POST['action'] == 'update') {
         try {
+            // Validasi input wajib
+            if (empty($_POST['nomor_surat'])) {
+                throw new Exception("Nomor surat harus diisi.");
+            }
+            if (empty($_POST['tanggal_surat'])) {
+                throw new Exception("Tanggal surat harus diisi.");
+            }
+            if (empty($_POST['tanggal_mulai'])) {
+                throw new Exception("Tanggal mulai harus diisi.");
+            }
+            if (empty($_POST['tanggal_selesai'])) {
+                throw new Exception("Tanggal selesai harus diisi.");
+            }
+            if (empty($_POST['untuk'])) {
+                throw new Exception("Tujuan/maksud surat harus diisi.");
+            }
+            if (empty($_POST['kota_tujuan'])) {
+                throw new Exception("Kota tujuan harus diisi.");
+            }
+
             $stmt = $pdo->prepare("SELECT COUNT(*) FROM surat_tugas WHERE nomor_surat = ? AND tanggal_surat = ? AND id != ?");
             $stmt->execute([$_POST['nomor_surat'], $_POST['tanggal_surat'], $_POST['id']]);
             $count = $stmt->fetchColumn();
@@ -1020,7 +1043,7 @@ endif; ?>
                     </div>
                     <div class="mb-4">
                         <label class="block text-sm font-medium text-slate-700 mb-1">Kota Tujuan</label>
-                        <input type="text" name="kota_tujuan" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none" placeholder="Contoh: Bandung">
+                        <input type="text" name="kota_tujuan" required class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none" placeholder="Contoh: Bandung">
                     </div>
                     <div class="mb-4">
                         <label class="block text-sm font-medium text-slate-700 mb-1">Cari & Tambah Pegawai</label>
@@ -1143,7 +1166,7 @@ endif; ?>
                     </div>
                     <div class="mb-4">
                         <label class="block text-sm font-medium text-slate-700 mb-1">Kota Tujuan</label>
-                        <input type="text" name="kota_tujuan" id="edit-kota" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none" placeholder="Contoh: Bandung">
+                        <input type="text" name="kota_tujuan" id="edit-kota" required class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none" placeholder="Contoh: Bandung">
                     </div>
                     <div class="mb-4">
                         <label class="block text-sm font-medium text-slate-700 mb-1">Cari & Tambah Pegawai</label>
