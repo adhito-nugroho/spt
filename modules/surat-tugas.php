@@ -226,19 +226,42 @@ try {
     $tanggal_papbd = null;
 }
 
-// Konfigurasi Pencarian
-$search = isset($_GET['search']) ? $_GET['search'] : '';
-$search_condition = '';
+// Konfigurasi Pencarian & Filter
+$search = isset($_GET['search']) ? trim((string)$_GET['search']) : '';
+$filter_tipe = isset($_GET['tipe']) ? trim((string)$_GET['tipe']) : '';
+$filter_from = isset($_GET['from']) ? trim((string)$_GET['from']) : '';
+$filter_to = isset($_GET['to']) ? trim((string)$_GET['to']) : '';
+if (!in_array($filter_tipe, ['umum', 'penyuluh'], true)) {
+    $filter_tipe = '';
+}
+
+$where_clauses = [];
+$query_params = [];
+
+if ($search !== '') {
+    $where_clauses[] = "(st.nomor_surat LIKE :search OR st.untuk LIKE :search OR p.nama LIKE :search)";
+    $query_params[':search'] = "%$search%";
+}
+if ($filter_tipe !== '') {
+    $where_clauses[] = "st.tipe_surat = :tipe";
+    $query_params[':tipe'] = $filter_tipe;
+}
+if ($filter_from !== '' && preg_match('/^\d{4}-\d{2}-\d{2}$/', $filter_from)) {
+    $where_clauses[] = "st.tanggal_surat >= :tanggal_from";
+    $query_params[':tanggal_from'] = $filter_from;
+}
+if ($filter_to !== '' && preg_match('/^\d{4}-\d{2}-\d{2}$/', $filter_to)) {
+    $where_clauses[] = "st.tanggal_surat <= :tanggal_to";
+    $query_params[':tanggal_to'] = $filter_to;
+}
+
+$search_condition = !empty($where_clauses) ? 'WHERE ' . implode(' AND ', $where_clauses) : '';
+$has_active_filter = ($search !== '' || $filter_tipe !== '' || $filter_from !== '' || $filter_to !== '');
 
 // Konfigurasi Pagination
 $limit = 10;
-$page = isset($_GET['page']) ? $_GET['page'] : 1;
+$page = isset($_GET['page']) ? max(1, (int)$_GET['page']) : 1;
 $start = ($page - 1) * $limit;
-
-// Persiapkan query sesuai apakah ada pencarian atau tidak
-if (!empty($search)) {
-    $search_condition = "WHERE st.nomor_surat LIKE :search OR st.untuk LIKE :search OR p.nama LIKE :search";
-}
 
 // Hitung total data dengan kondisi pencarian
 $query_count = "SELECT COUNT(DISTINCT st.id) AS total 
@@ -247,12 +270,23 @@ $query_count = "SELECT COUNT(DISTINCT st.id) AS total
                 LEFT JOIN pegawai p ON pt.nip = p.nip 
                 $search_condition";
 $stmt_count = $pdo->prepare($query_count);
-if (!empty($search)) {
-    $stmt_count->bindValue(':search', "%$search%", PDO::PARAM_STR);
+foreach ($query_params as $param => $value) {
+    $stmt_count->bindValue($param, $value, PDO::PARAM_STR);
 }
 $stmt_count->execute();
 $total_records = $stmt_count->fetch()['total'];
-$total_pages = ceil($total_records / $limit);
+$total_pages = (int)ceil($total_records / $limit);
+$page = $total_pages > 0 ? min($page, $total_pages) : 1;
+$start = ($page - 1) * $limit;
+
+// Parameter yang dipertahankan pada tautan pagination
+$pagination_params = array_filter([
+    'search' => $search,
+    'tipe' => $filter_tipe,
+    'from' => $filter_from,
+    'to' => $filter_to,
+], static fn($value) => $value !== '');
+$pagination_query = $pagination_params ? '&' . http_build_query($pagination_params) : '';
 
 // Ambil data surat tugas dengan pagination dan detail pegawai
 $query = "SELECT 
@@ -269,8 +303,8 @@ $query = "SELECT
 $stmt = $pdo->prepare($query);
 $stmt->bindValue(':start', $start, PDO::PARAM_INT);
 $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
-if (!empty($search)) {
-    $stmt->bindValue(':search', "%$search%", PDO::PARAM_STR);
+foreach ($query_params as $param => $value) {
+    $stmt->bindValue($param, $value, PDO::PARAM_STR);
 }
 $stmt->execute();
 $surat_tugas = $stmt->fetchAll();
@@ -662,82 +696,170 @@ include '../includes/header.php';
         transform: translateY(-1px);
         box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
     }
+
+    /* ===== Tabel Surat Tugas ===== */
+    .page-header-bar {
+        position: sticky;
+        top: -1.5rem;
+        z-index: 20;
+        background: #f9fafb;
+        box-shadow: 0 1px 0 rgba(15, 23, 42, 0.05);
+    }
+    @media (min-width: 1024px) {
+        .page-header-bar {
+            top: -2rem;
+        }
+    }
+    .table-surat {
+        min-width: 960px;
+    }
+    .table-surat thead th,
+    .table-surat tbody td {
+        padding: 0.7rem 0.75rem;
+        vertical-align: middle;
+    }
+    .table-surat thead th:first-child,
+    .table-surat tbody td:first-child {
+        padding-left: 1.25rem;
+    }
+    .table-surat thead th:last-child,
+    .table-surat tbody td:last-child {
+        padding-right: 1.25rem;
+    }
+    .table-surat thead th {
+        white-space: nowrap;
+    }
+    .table-surat .col-nomor,
+    .table-surat .col-tanggal,
+    .table-surat .col-pegawai,
+    .table-surat .col-pelaksanaan,
+    .table-surat .col-tipe,
+    .table-surat .col-aksi {
+        white-space: nowrap;
+    }
+    .table-surat .col-untuk {
+        width: 100%;
+        min-width: 240px;
+    }
+    .table-surat .col-aksi {
+        text-align: right;
+    }
+    .table-surat tbody tr.surat-row {
+        transition: background-color .15s ease;
+    }
+    .table-surat tbody tr.surat-row:hover {
+        background: #f1f5f9;
+    }
+    .table-surat tbody tr.surat-row.is-expanded {
+        background: #f8fafc;
+    }
+    .table-surat tbody tr.surat-row.is-expanded:hover {
+        background: #f1f5f9;
+    }
+    .table-surat tbody tr.surat-row.is-expanded td {
+        border-bottom-color: transparent;
+    }
+    .table-surat tbody tr.detail-row,
+    .table-surat tbody tr.detail-row:hover {
+        background: #f8fafc;
+    }
+    .table-surat tbody tr.detail-row > td {
+        padding: 0;
+    }
+    .untuk-clamp {
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+        overflow-wrap: anywhere;
+        line-height: 1.45;
+    }
+    .nip-mono {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-variant-numeric: tabular-nums;
+        letter-spacing: -0.01em;
+    }
+    .detail-card {
+        border-left: 3px solid #4f46e5;
+    }
 </style>
 
 <div class="space-y-6">
-    <div class="flex flex-col md:flex-row justify-between items-center gap-4">
+    <div class="page-header-bar flex flex-col md:flex-row justify-between md:items-center gap-4 -mx-6 -mt-6 px-6 pt-6 pb-3 lg:-mx-8 lg:-mt-8 lg:px-8 lg:pt-8">
         <div>
             <h1 class="page-header-title">Surat Tugas</h1>
             <p class="page-header-sub">Manajemen surat perintah tugas pegawai</p>
         </div>
-        <button onclick="openModal('addSuratModal')" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-colors shadow-sm text-sm font-medium">
+        <button onclick="openModal('addSuratModal')" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-colors shadow-sm text-sm font-medium shrink-0">
             <i class='bx bx-plus'></i> Buat Surat Tugas
         </button>
     </div>
 
-    <!-- Form Pencarian -->
+    <!-- Form Pencarian & Filter -->
     <div class="card p-4">
-        <form action="" method="GET" class="flex gap-2">
-            <div class="relative flex-1">
-                <i class='bx bx-search absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400'></i>
-                <input type="text" name="search" class="w-full pl-10 pr-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all"
-                    placeholder="Cari nomor surat, tujuan, atau pegawai"
-                    value="<?php echo htmlspecialchars($search); ?>">
+        <form action="surat-tugas.php" method="GET" id="formFilter" class="space-y-3">
+            <div class="flex flex-col sm:flex-row gap-2">
+                <div class="relative flex-1">
+                    <i class='bx bx-search absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400'></i>
+                    <input type="text" name="search" id="searchInput" class="w-full pl-10 pr-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all"
+                        placeholder="Cari nomor surat, tujuan, atau pegawai"
+                        value="<?php echo htmlspecialchars($search); ?>">
+                </div>
+                <button type="submit" class="border-2 border-indigo-600 text-indigo-600 hover:bg-indigo-50 px-6 py-2 rounded-lg transition-colors font-medium">
+                    <i class='bx bx-search mr-1'></i> Cari
+                </button>
             </div>
-            <button type="submit" class="border-2 border-indigo-600 text-indigo-600 hover:bg-indigo-50 px-6 py-2 rounded-lg transition-colors font-medium">
-                Cari
-            </button>
-            <?php if (!empty($search)): ?>
-                <a href="surat-tugas.php" class="bg-slate-200 hover:bg-slate-300 text-slate-700 px-4 py-2 rounded-lg transition-colors flex items-center gap-2">
-                    <i class='bx bx-reset'></i> Reset
-                </a>
-            <?php endif; ?>
+            <!-- Filter Row -->
+            <div class="flex flex-wrap items-end gap-3 pt-3 border-t border-slate-100" id="filterRow">
+                <div class="flex flex-col gap-1">
+                    <label for="filterTipe" class="text-xs font-medium text-slate-500">Tipe:</label>
+                    <select name="tipe" id="filterTipe" class="text-sm border border-slate-300 rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none">
+                        <option value="">Semua</option>
+                        <option value="umum" <?php echo $filter_tipe === 'umum' ? 'selected' : ''; ?>>Umum</option>
+                        <option value="penyuluh" <?php echo $filter_tipe === 'penyuluh' ? 'selected' : ''; ?>>Penyuluh</option>
+                    </select>
+                </div>
+                <div class="flex flex-col gap-1">
+                    <label for="filterDateFrom" class="text-xs font-medium text-slate-500">Dari:</label>
+                    <input type="date" name="from" id="filterDateFrom" value="<?php echo htmlspecialchars($filter_from); ?>" class="text-sm border border-slate-300 rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none">
+                </div>
+                <div class="flex flex-col gap-1">
+                    <label for="filterDateTo" class="text-xs font-medium text-slate-500">Sampai:</label>
+                    <input type="date" name="to" id="filterDateTo" value="<?php echo htmlspecialchars($filter_to); ?>" class="text-sm border border-slate-300 rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none">
+                </div>
+                <button type="button" id="btnResetFilter" class="inline-flex items-center gap-1.5 text-sm font-medium px-4 py-1.5 border border-slate-300 text-slate-600 rounded-lg hover:bg-slate-50 hover:border-slate-400 transition-colors" title="Hapus semua filter tanggal, tipe, dan pencarian">
+                    <i class='bx bx-reset text-base'></i> Reset
+                </button>
+                <?php if ($has_active_filter): ?>
+                    <span class="text-xs text-slate-500 sm:ml-auto">
+                        <i class='bx bx-filter-alt mr-1'></i>Filter aktif &middot; <?php echo (int)$total_records; ?> data
+                    </span>
+                <?php endif; ?>
+            </div>
         </form>
-        <!-- Filter Row -->
-        <div class="flex flex-wrap items-center gap-3 mt-3 pt-3 border-t border-slate-100" id="filterRow">
-            <div class="flex items-center gap-2">
-                <label class="text-xs font-medium text-slate-500">Tipe:</label>
-                <select id="filterTipe" class="text-sm border border-slate-300 rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none">
-                    <option value="">Semua</option>
-                    <option value="umum">Umum</option>
-                    <option value="penyuluh">Penyuluh</option>
-                </select>
-            </div>
-            <div class="flex items-center gap-2">
-                <label class="text-xs font-medium text-slate-500">Dari:</label>
-                <input type="date" id="filterDateFrom" class="text-sm border border-slate-300 rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none">
-            </div>
-            <div class="flex items-center gap-2">
-                <label class="text-xs font-medium text-slate-500">Sampai:</label>
-                <input type="date" id="filterDateTo" class="text-sm border border-slate-300 rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none">
-            </div>
-            <button type="button" id="btnResetFilter" class="hidden text-xs text-red-600 hover:text-red-700 font-medium px-3 py-1.5 border border-red-200 rounded-lg hover:bg-red-50 transition-colors">
-                <i class='bx bx-reset mr-1'></i>Reset Filter
-            </button>
-        </div>
     </div>
 
     <!-- Tabel Surat Tugas -->
     <div class="card overflow-hidden">
         <div class="overflow-x-auto">
             <?php if (count($surat_tugas) > 0): ?>
-                <table class="w-full text-left table-premium" id="tabelSurat">
+                <table class="w-full text-left table-premium table-surat" id="tabelSurat">
                     <thead>
                         <tr>
                             <th class="w-8" title="Lihat detail">
                                 <i class='bx bx-detail text-slate-400'></i>
                             </th>
-                            <th>Nomor Surat</th>
-                            <th class="cursor-pointer select-none sortable-header" data-sort="tanggal" data-order="">
+                            <th class="col-nomor">Nomor Surat</th>
+                            <th class="col-tanggal cursor-pointer select-none sortable-header" data-sort="tanggal" data-order="">
                                 <span class="inline-flex items-center gap-1">Tanggal <i class='bx bx-sort-alt-2 text-slate-400 sort-icon'></i></span>
                             </th>
-                            <th style="min-width:240px;">Untuk</th>
-                            <th>Pegawai</th>
-                            <th class="cursor-pointer select-none sortable-header" data-sort="pelaksanaan" data-order="">
+                            <th class="col-untuk">Untuk</th>
+                            <th class="col-pegawai">Pegawai</th>
+                            <th class="col-pelaksanaan cursor-pointer select-none sortable-header" data-sort="pelaksanaan" data-order="">
                                 <span class="inline-flex items-center gap-1">Pelaksanaan <i class='bx bx-sort-alt-2 text-slate-400 sort-icon'></i></span>
                             </th>
-                            <th>Tipe</th>
-                            <th class="text-right">Aksi</th>
+                            <th class="col-tipe">Tipe</th>
+                            <th class="col-aksi">Aksi</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -766,23 +888,33 @@ include '../includes/header.php';
         }
         
         $tipe_surat = isset($st['tipe_surat']) ? $st['tipe_surat'] : 'umum';
+
+        // Durasi pelaksanaan
+        $mulai_ts = strtotime($st['tanggal_mulai']);
+        $selesai_ts = strtotime($st['tanggal_selesai']);
+        $durasi_hari = (int)floor(($selesai_ts - $mulai_ts) / 86400) + 1;
+        if ($durasi_hari < 1) {
+            $durasi_hari = 1;
+        }
+        $tanggal_sama = date('Y-m-d', $mulai_ts) === date('Y-m-d', $selesai_ts);
 ?>
                             <tr class="group surat-row" 
                                 data-tipe="<?php echo htmlspecialchars($tipe_surat); ?>"
                                 data-tanggal="<?php echo $st['tanggal_surat']; ?>"
-                                data-mulai="<?php echo $st['tanggal_mulai']; ?>">
+                                data-mulai="<?php echo $st['tanggal_mulai']; ?>"
+                                data-row-id="<?php echo $st['id']; ?>">
                                 <td>
                                     <button onclick="toggleDetails('details-<?php echo $st['id']; ?>')" 
                                         class="text-indigo-600 hover:text-indigo-800 transition-transform transform duration-200" 
                                         id="btn-details-<?php echo $st['id']; ?>"
                                         title="Lihat detail surat"
-                                        aria-label="Lihat detail surat">
+                                        aria-label="Lihat detail surat"
+                                        aria-expanded="false">
                                         <i class='bx bx-chevron-down text-lg transition-transform duration-200'></i>
                                     </button>
                                 </td>
-                                <td class="font-medium text-gray-900"><?php echo htmlspecialchars($st['nomor_surat']); ?></td>
-                                <td class="text-gray-500">
-                                    <span class="block"><?php echo date('d/m/Y', strtotime($st['tanggal_surat'])); ?></span>
+                                <td class="col-nomor font-medium text-gray-900">
+                                    <span class="block"><?php echo htmlspecialchars($st['nomor_surat']); ?></span>
                                     <?php if (!empty($tanggal_papbd)): ?>
                                         <?php if ($st['tanggal_surat'] >= $tanggal_papbd): ?>
                                             <span class="inline-flex items-center px-2 py-0.5 mt-1 rounded-full text-[11px] font-medium bg-amber-100 text-amber-800" title="Memakai template dasar baru (berlaku mulai <?php echo date('d/m/Y', strtotime($tanggal_papbd)); ?>)">
@@ -795,20 +927,35 @@ include '../includes/header.php';
                                         <?php endif; ?>
                                     <?php endif; ?>
                                 </td>
-                                <td class="text-gray-600">
-                                    <span class="block truncate" style="max-width:320px;" title="<?php echo htmlspecialchars($st['untuk']); ?>">
-                                        <?php echo htmlspecialchars(mb_strlen($st['untuk']) > 80 ? mb_substr($st['untuk'], 0, 80) . '...' : $st['untuk']); ?>
+                                <td class="col-tanggal text-gray-500">
+                                    <span class="block"><?php echo date('d/m/Y', strtotime($st['tanggal_surat'])); ?></span>
+                                </td>
+                                <td class="col-untuk text-gray-600">
+                                    <span class="untuk-clamp" title="<?php echo htmlspecialchars($st['untuk']); ?>">
+                                        <?php echo htmlspecialchars($st['untuk']); ?>
                                     </span>
                                 </td>
-                                <td>
-                                    <span class="badge badge-indigo cursor-default" title="<?php echo $tooltip_pegawai; ?>">
+                                <td class="col-pegawai">
+                                    <span class="badge badge-indigo cursor-pointer hover:bg-indigo-200 transition-colors"
+                                        onclick="toggleDetails('details-<?php echo $st['id']; ?>')"
+                                        title="<?php echo $tooltip_pegawai; ?>&#10;Klik untuk lihat detail"
+                                        role="button"
+                                        tabindex="0"
+                                        onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleDetails('details-<?php echo $st['id']; ?>');}">
                                         <?php echo $jumlah_pegawai; ?> Pegawai
                                     </span>
                                 </td>
-                                <td class="text-gray-500 whitespace-nowrap">
-                                    <?php echo date('d/m/Y', strtotime($st['tanggal_mulai'])) . ' - ' . date('d/m/Y', strtotime($st['tanggal_selesai'])); ?>
+                                <td class="col-pelaksanaan text-gray-500">
+                                    <span class="block">
+                                        <?php if ($tanggal_sama): ?>
+                                            <?php echo date('d/m/Y', $mulai_ts); ?>
+                                        <?php else: ?>
+                                            <?php echo date('d/m/Y', $mulai_ts) . ' - ' . date('d/m/Y', $selesai_ts); ?>
+                                        <?php endif; ?>
+                                    </span>
+                                    <span class="block mt-0.5 text-[11px] font-medium text-slate-500">(<?php echo $durasi_hari; ?> Hari)</span>
                                 </td>
-                                <td>
+                                <td class="col-tipe">
                                     <?php if ($tipe_surat === 'penyuluh'): ?>
                                         <span class="badge badge-emerald">
                                             <i class='bx bx-leaf mr-1'></i>Penyuluh
@@ -819,12 +966,12 @@ include '../includes/header.php';
                                         </span>
                                     <?php endif; ?>
                                 </td>
-                                <td class="text-right">
+                                <td class="col-aksi text-right">
                                     <div class="inline-flex items-center gap-1.5">
-                                        <button class="btn-action primary" title="Generate Surat" onclick="generateSurat(<?php echo $st['id']; ?>)">
+                                        <button class="btn-action primary" title="Cetak/Unduh Word" aria-label="Cetak/Unduh Word" onclick="generateSurat(<?php echo $st['id']; ?>)">
                                             <i class='bx bx-file'></i>
                                         </button>
-                                        <button class="btn-action warning edit-btn" title="Edit" 
+                                        <button class="btn-action warning edit-btn" title="Edit Surat Tugas" aria-label="Edit Surat Tugas"
                                             data-id="<?php echo $st['id']; ?>"
                                             data-nomor="<?php echo htmlspecialchars($st['nomor_surat']); ?>"
                                             data-tanggal="<?php echo $st['tanggal_surat']; ?>"
@@ -837,28 +984,33 @@ include '../includes/header.php';
                                             data-tipe="<?php echo htmlspecialchars($tipe_surat); ?>">
                                             <i class='bx bx-edit'></i>
                                         </button>
-                                        <button class="btn-action danger delete-btn" title="Hapus" data-id="<?php echo $st['id']; ?>">
+                                        <button class="btn-action danger delete-btn" title="Hapus Surat Tugas" aria-label="Hapus Surat Tugas" data-id="<?php echo $st['id']; ?>">
                                             <i class='bx bx-trash'></i>
                                         </button>
                                     </div>
                                 </td>
                             </tr>
-                            <tr id="details-<?php echo $st['id']; ?>" class="hidden bg-slate-50 detail-row">
-                                <td colspan="8" class="px-3 py-3">
-                                    <div class="bg-white rounded-lg border border-slate-200 p-4">
-                                        <h6 class="text-sm font-semibold text-slate-700 mb-3">Detail Pegawai yang Ditugaskan:</h6>
-                                        <div class="overflow-x-auto">
-                                            <table class="w-full text-sm text-left">
-                                                <thead class="bg-slate-50 text-slate-500">
-                                                    <tr>
-                                                        <th class="px-4 py-2 border-b">No</th>
-                                                        <th class="px-4 py-2 border-b">NIP</th>
-                                                        <th class="px-4 py-2 border-b">Nama</th>
-                                                        <th class="px-4 py-2 border-b">Jabatan</th>
-                                                    </tr>
-                                                </thead>
-                                                <tbody class="divide-y divide-slate-100">
-                                                    <?php
+                            <tr id="details-<?php echo $st['id']; ?>" class="hidden detail-row">
+                                <td colspan="8" class="p-0">
+                                    <div class="bg-slate-50 px-4 sm:px-6 py-4">
+                                        <div class="detail-card bg-white rounded-lg border border-slate-200 p-4">
+                                            <div class="mb-4 pb-3 border-b border-slate-100">
+                                                <p class="text-[11px] font-semibold uppercase tracking-wide text-slate-400 mb-1">Untuk</p>
+                                                <p class="text-sm text-slate-700 leading-relaxed"><?php echo nl2br(htmlspecialchars($st['untuk'])); ?></p>
+                                            </div>
+                                            <h6 class="text-sm font-semibold text-slate-700 mb-3">Detail Pegawai yang Ditugaskan:</h6>
+                                            <div class="overflow-x-auto">
+                                                <table class="w-full text-sm text-left">
+                                                    <thead class="bg-slate-50 text-slate-500">
+                                                        <tr>
+                                                            <th class="px-4 py-2 border-b">No</th>
+                                                            <th class="px-4 py-2 border-b">NIP</th>
+                                                            <th class="px-4 py-2 border-b">Nama</th>
+                                                            <th class="px-4 py-2 border-b">Jabatan</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody class="divide-y divide-slate-100">
+                                                        <?php
         $no_detail = 1;
         foreach ($pegawai_array as $p):
             if ($p != '') {
@@ -867,18 +1019,19 @@ include '../includes/header.php';
                 $nama = $parts[1] ?? '';
                 $jabatan = $parts[2] ?? '';
 ?>
-                                                            <tr>
-                                                                <td class="px-4 py-2"><?php echo $no_detail++; ?></td>
-                                                                <td class="px-4 py-2 font-mono text-slate-600"><?php echo htmlspecialchars($nip ?? ''); ?></td>
-                                                                <td class="px-4 py-2 font-medium text-slate-900"><?php echo htmlspecialchars($nama ?? ''); ?></td>
-                                                                <td class="px-4 py-2 text-slate-600"><?php echo htmlspecialchars($jabatan ?? ''); ?></td>
-                                                            </tr>
-                                                            <?php
+                                                                <tr>
+                                                                    <td class="px-4 py-2"><?php echo $no_detail++; ?></td>
+                                                                    <td class="px-4 py-2 nip-mono text-slate-600"><?php echo htmlspecialchars($nip ?? ''); ?></td>
+                                                                    <td class="px-4 py-2 font-medium text-slate-900"><?php echo htmlspecialchars($nama ?? ''); ?></td>
+                                                                    <td class="px-4 py-2 text-slate-600"><?php echo htmlspecialchars($jabatan ?? ''); ?></td>
+                                                                </tr>
+                                                                <?php
             }
         endforeach;
 ?>
-                                                </tbody>
-                                            </table>
+                                                    </tbody>
+                                                </table>
+                                            </div>
                                         </div>
                                     </div>
                                 </td>
@@ -892,14 +1045,19 @@ else: ?>
                 <div class="p-8 text-center text-slate-500">
                     <i class='bx bx-file-blank text-4xl mb-2 text-slate-300'></i>
                     <p>
-                        <?php if (!empty($search)): ?>
-                            Tidak ditemukan surat tugas dengan kata kunci "<?php echo htmlspecialchars($search); ?>".
+                        <?php if ($has_active_filter): ?>
+                            Tidak ada surat tugas yang cocok dengan filter/pencarian saat ini.
                         <?php
     else: ?>
                             Belum ada data surat tugas.
                         <?php
     endif; ?>
                     </p>
+                    <?php if ($has_active_filter): ?>
+                        <a href="surat-tugas.php" class="inline-flex items-center gap-1.5 mt-3 text-sm font-medium text-indigo-600 hover:text-indigo-700">
+                            <i class='bx bx-reset'></i> Tampilkan semua data
+                        </a>
+                    <?php endif; ?>
                 </div>
             <?php
 endif; ?>
@@ -917,13 +1075,13 @@ endif; ?>
                         $from = max(1, $to - $maxPageLinks + 1);
                     ?>
                     <?php if ($page > 1): ?>
-                        <a href="?page=<?php echo($page - 1); ?><?php echo(!empty($search) ? '&search=' . urlencode($search) : ''); ?>" 
+                        <a href="?page=<?php echo($page - 1); ?><?php echo $pagination_query; ?>" 
                            class="px-3 py-1 rounded border border-slate-200 text-slate-600 hover:bg-slate-50 text-sm">Previous</a>
                     <?php
     endif; ?>
 
                     <?php if ($from > 1): ?>
-                        <a href="?page=1<?php echo(!empty($search) ? '&search=' . urlencode($search) : ''); ?>"
+                        <a href="?page=1<?php echo $pagination_query; ?>"
                            class="px-3 py-1 rounded border border-slate-200 text-slate-600 hover:bg-slate-50 text-sm">1</a>
                         <?php if ($from > 2): ?>
                             <span class="px-2 py-1 text-slate-400 text-sm">...</span>
@@ -931,7 +1089,7 @@ endif; ?>
                     <?php endif; ?>
 
                     <?php for ($i = $from; $i <= $to; $i++): ?>
-                        <a href="?page=<?php echo $i; ?><?php echo(!empty($search) ? '&search=' . urlencode($search) : ''); ?>"
+                        <a href="?page=<?php echo $i; ?><?php echo $pagination_query; ?>"
                            class="px-3 py-1 rounded border <?php echo($page == $i) ? 'bg-indigo-600 text-white border-indigo-600' : 'border-slate-200 text-slate-600 hover:bg-slate-50'; ?> text-sm">
                             <?php echo $i; ?>
                         </a>
@@ -942,12 +1100,12 @@ endif; ?>
                         <?php if ($to < $total_pages - 1): ?>
                             <span class="px-2 py-1 text-slate-400 text-sm">...</span>
                         <?php endif; ?>
-                        <a href="?page=<?php echo $total_pages; ?><?php echo(!empty($search) ? '&search=' . urlencode($search) : ''); ?>"
+                        <a href="?page=<?php echo $total_pages; ?><?php echo $pagination_query; ?>"
                            class="px-3 py-1 rounded border border-slate-200 text-slate-600 hover:bg-slate-50 text-sm"><?php echo $total_pages; ?></a>
                     <?php endif; ?>
 
                     <?php if ($page < $total_pages): ?>
-                        <a href="?page=<?php echo($page + 1); ?><?php echo(!empty($search) ? '&search=' . urlencode($search) : ''); ?>"
+                        <a href="?page=<?php echo($page + 1); ?><?php echo $pagination_query; ?>"
                            class="px-3 py-1 rounded border border-slate-200 text-slate-600 hover:bg-slate-50 text-sm">Next</a>
                     <?php
     endif; ?>
@@ -1302,7 +1460,7 @@ endforeach; ?>
         const element = document.getElementById(id);
         const btn = document.getElementById('btn-' + id);
         if (!element) return;
-        
+
         const isHidden = element.classList.contains('hidden') || element.style.display === 'none';
         if (isHidden) {
             element.classList.remove('hidden');
@@ -1313,6 +1471,11 @@ endforeach; ?>
         }
         if (btn) {
             btn.querySelector('i').classList.toggle('rotate-180');
+            btn.setAttribute('aria-expanded', isHidden ? 'true' : 'false');
+        }
+        const mainRow = element.previousElementSibling;
+        if (mainRow && mainRow.classList.contains('surat-row')) {
+            mainRow.classList.toggle('is-expanded', isHidden);
         }
     }
 
@@ -1741,69 +1904,43 @@ endforeach; ?>
         }
     })();
 
-    // ===== CLIENT-SIDE FILTER & SORT =====
+    // ===== FILTER (server-side) & SORT (client-side) =====
     (function() {
+        const formFilter = document.getElementById('formFilter');
         const filterTipe = document.getElementById('filterTipe');
         const filterDateFrom = document.getElementById('filterDateFrom');
         const filterDateTo = document.getElementById('filterDateTo');
         const btnResetFilter = document.getElementById('btnResetFilter');
 
-        function getRows() {
-            return document.querySelectorAll('#tabelSurat tbody .surat-row');
-        }
-
-        function applyFilters() {
-            const rows = getRows();
-            const tipe = filterTipe ? filterTipe.value : '';
-            const dateFrom = filterDateFrom ? filterDateFrom.value : '';
-            const dateTo = filterDateTo ? filterDateTo.value : '';
-            let hasActiveFilter = (tipe !== '' || dateFrom !== '' || dateTo !== '');
-
-            rows.forEach(row => {
-                let show = true;
-                const rowTipe = row.dataset.tipe || '';
-                const rowTanggal = row.dataset.tanggal || '';
-
-                // Filter tipe
-                if (tipe && rowTipe !== tipe) show = false;
-
-                // Filter date range
-                if (dateFrom && rowTanggal < dateFrom) show = false;
-                if (dateTo && rowTanggal > dateTo) show = false;
-
-                row.style.display = show ? '' : 'none';
-                // Also hide/show the associated detail row
-                const detailId = row.querySelector('button[id^="btn-details-"]');
-                if (detailId) {
-                    const id = detailId.id.replace('btn-', '');
-                    const detailRow = document.getElementById(id);
-                    if (detailRow) {
-                        if (!show) {
-                            detailRow.style.display = 'none';
-                        } else {
-                            // Restore: only show if it was already expanded (not hidden class)
-                            detailRow.style.display = detailRow.classList.contains('hidden') ? 'none' : '';
-                        }
-                    }
-                }
-            });
-
-            // Show/hide reset button
-            if (btnResetFilter) {
-                btnResetFilter.classList.toggle('hidden', !hasActiveFilter);
+        function submitFilter() {
+            if (formFilter) {
+                formFilter.submit();
             }
         }
 
-        if (filterTipe) filterTipe.addEventListener('change', applyFilters);
-        if (filterDateFrom) filterDateFrom.addEventListener('change', applyFilters);
-        if (filterDateTo) filterDateTo.addEventListener('change', applyFilters);
+        // Filter tipe & rentang tanggal langsung diterapkan tanpa menekan "Cari"
+        if (filterTipe) filterTipe.addEventListener('change', submitFilter);
+        if (filterDateFrom) filterDateFrom.addEventListener('change', function() {
+            if (filterDateTo && filterDateTo.value && filterDateFrom.value > filterDateTo.value) {
+                filterDateTo.value = filterDateFrom.value;
+            }
+            submitFilter();
+        });
+        if (filterDateTo) filterDateTo.addEventListener('change', function() {
+            if (filterDateFrom && filterDateFrom.value && filterDateTo.value < filterDateFrom.value) {
+                filterDateFrom.value = filterDateTo.value;
+            }
+            submitFilter();
+        });
 
         if (btnResetFilter) {
             btnResetFilter.addEventListener('click', function() {
                 if (filterTipe) filterTipe.value = '';
                 if (filterDateFrom) filterDateFrom.value = '';
                 if (filterDateTo) filterDateTo.value = '';
-                applyFilters();
+                const searchInput = document.getElementById('searchInput');
+                if (searchInput) searchInput.value = '';
+                window.location.href = 'surat-tugas.php';
             });
         }
 
@@ -1867,9 +2004,6 @@ endforeach; ?>
                     tbody.appendChild(pair.main);
                     if (pair.detail) tbody.appendChild(pair.detail);
                 });
-
-                // Re-apply filters after sort
-                applyFilters();
             });
         });
     })();
