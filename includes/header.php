@@ -6,21 +6,21 @@ if (session_status() === PHP_SESSION_NONE && !headers_sent()) {
 $headerUser = isset($_SESSION['user']) && is_array($_SESSION['user']) ? $_SESSION['user'] : [];
 $userName = trim((string)($headerUser['nama'] ?? $_SESSION['nama'] ?? ''));
 $userJabatanRaw = trim((string)($headerUser['jabatan'] ?? $_SESSION['jabatan'] ?? ''));
+$userGolongan = trim((string)($headerUser['golongan'] ?? $_SESSION['golongan'] ?? ''));
 $userNip = trim((string)($headerUser['nip'] ?? $_SESSION['nip'] ?? ''));
 
-if ($userName === '' && isset($pdo) && $pdo instanceof PDO) {
+if ($userName === '' && $userNip !== '' && isset($pdo) && $pdo instanceof PDO) {
     try {
-        if ($userNip !== '') {
-            $stmtHeaderUser = $pdo->prepare("SELECT nama, jabatan FROM pegawai WHERE nip = ? LIMIT 1");
-            $stmtHeaderUser->execute([$userNip]);
-        } else {
-            $stmtHeaderUser = $pdo->query("SELECT nama, jabatan FROM pegawai ORDER BY nip ASC LIMIT 1");
-        }
-
+        $stmtHeaderUser = $pdo->prepare("SELECT nama, pangkat, jabatan FROM pegawai WHERE nip = ? LIMIT 1");
+        $stmtHeaderUser->execute([$userNip]);
         $pegawaiHeader = $stmtHeaderUser->fetch();
+
         if ($pegawaiHeader) {
             $userName = trim((string)($pegawaiHeader['nama'] ?? ''));
             $userJabatanRaw = trim((string)($pegawaiHeader['jabatan'] ?? ''));
+            if ($userGolongan === '') {
+                $userGolongan = trim((string)($pegawaiHeader['pangkat'] ?? ''));
+            }
         }
     } catch (PDOException $e) {
         error_log('Gagal memuat data user header: ' . $e->getMessage());
@@ -28,13 +28,21 @@ if ($userName === '' && isset($pdo) && $pdo instanceof PDO) {
 }
 
 if ($userName === '') {
-    $userName = 'Pegawai CDK Bojonegoro';
+    $userName = "MUHIMATUN NI'MAH";
+    $userJabatanRaw = 'Penyuluh Kehutanan Pemula';
+    $userGolongan = 'V';
 }
 
 $userJabatan = trim((string)preg_replace('/\s+pada\s+.*$/i', '', $userJabatanRaw));
 if ($userJabatan === '') {
     $userJabatan = 'Pegawai';
 }
+
+$userMeta = trim(
+    ($userGolongan !== '' ? 'Golongan (' . $userGolongan . ')' : '')
+    . ($userGolongan !== '' && $userJabatan !== '' ? ' · ' : '')
+    . $userJabatan
+);
 
 $userUnit = 'CDK Wilayah Bojonegoro';
 $userInitial = function_exists('mb_substr')
@@ -188,7 +196,7 @@ $userInitial = function_exists('mb_substr')
                     <div class="flex min-w-0 items-center gap-2.5">
                         <div class="hidden min-w-0 max-w-[15rem] text-right sm:block">
                             <p class="truncate text-sm font-semibold leading-tight text-gray-800"><?= htmlspecialchars($userName, ENT_QUOTES, 'UTF-8') ?></p>
-                            <p class="truncate text-[11px] leading-tight text-gray-500" title="<?= htmlspecialchars($userJabatanRaw, ENT_QUOTES, 'UTF-8') ?>"><?= htmlspecialchars($userJabatan, ENT_QUOTES, 'UTF-8') ?></p>
+                            <p class="truncate text-[11px] leading-tight text-gray-500" title="<?= htmlspecialchars($userMeta, ENT_QUOTES, 'UTF-8') ?>"><?= htmlspecialchars($userMeta, ENT_QUOTES, 'UTF-8') ?></p>
                             <p class="truncate text-[10px] leading-tight text-gray-400"><?= htmlspecialchars($userUnit, ENT_QUOTES, 'UTF-8') ?></p>
                         </div>
                         <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary-light text-sm font-bold text-primary ring-1 ring-primary-border">
