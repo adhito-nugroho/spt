@@ -72,75 +72,47 @@ foreach ($chart_data as $cd) {
 
     <!-- Stat Cards -->
     <div class="grid grid-cols-1 min-[480px]:grid-cols-2 md:grid-cols-4 gap-6">
-        <!-- Card 1: Total Pegawai -->
-        <div class="stat-card blue">
-            <div class="flex justify-between items-start">
+        <div class="stat-card">
+            <div class="flex items-start justify-between gap-4">
                 <div>
-                    <p class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Total Pegawai</p>
-                    <h3 class="text-3xl font-bold text-gray-900"><?php echo $total_pegawai; ?></h3>
+                    <p class="text-[11px] font-medium uppercase tracking-wider text-gray-500">Total Pegawai</p>
+                    <h3 class="mt-2 text-3xl font-bold tracking-tight text-gray-900"><?php echo $total_pegawai; ?></h3>
                 </div>
-                <div class="stat-icon blue">
-                    <i class='bx bxs-user'></i>
-                </div>
-            </div>
-            <div class="mt-4 flex items-center gap-2">
-                <span class="badge badge-gray">Aktif</span>
-                <span class="text-xs text-gray-500">Pegawai Terdaftar</span>
+                <i class='bx bxs-user text-xl text-slate-400' aria-hidden="true"></i>
             </div>
         </div>
 
-        <!-- Card 2: Total Surat Tugas -->
-        <div class="stat-card indigo">
-            <div class="flex justify-between items-start">
+        <div class="stat-card">
+            <div class="flex items-start justify-between gap-4">
                 <div>
-                    <p class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Total Surat Tugas</p>
-                    <h3 class="text-3xl font-bold text-gray-900"><?php echo $total_surat; ?></h3>
+                    <p class="text-[11px] font-medium uppercase tracking-wider text-gray-500">Total Surat Tugas</p>
+                    <h3 class="mt-2 text-3xl font-bold tracking-tight text-gray-900"><?php echo $total_surat; ?></h3>
                 </div>
-                <div class="stat-icon indigo">
-                    <i class='bx bxs-envelope'></i>
-                </div>
-            </div>
-            <div class="mt-4 flex items-center gap-2">
-                <span class="badge badge-indigo">Total</span>
-                <span class="text-xs text-gray-500">Surat Dibuat</span>
+                <i class='bx bxs-envelope text-xl text-slate-400' aria-hidden="true"></i>
             </div>
         </div>
 
-        <!-- Card 3: Surat Bulan Ini -->
-        <div class="stat-card violet">
-            <div class="flex justify-between items-start">
+        <div class="stat-card">
+            <div class="flex items-start justify-between gap-4">
                 <div>
-                    <p class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Surat Bulan Ini</p>
-                    <h3 class="text-3xl font-bold text-gray-900"><?php echo $surat_bulan_ini; ?></h3>
+                    <p class="text-[11px] font-medium uppercase tracking-wider text-gray-500">Surat Bulan Ini</p>
+                    <h3 class="mt-2 text-3xl font-bold tracking-tight text-gray-900"><?php echo $surat_bulan_ini; ?></h3>
                 </div>
-                <div class="stat-icon violet">
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-5 h-5">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5m-9-6h.008v.008H12v-.008zM12 15h.008v.008H12V15zm0 2.25h.008v.008H12v-.008zM9.75 15h.008v.008H9.75V15zm0 2.25h.008v.008H9.75v-.008zM7.5 15h.008v.008H7.5V15zm0 2.25h.008v.008H7.5v-.008zm6.75-4.5h.008v.008h-.008v-.008zm0 2.25h.008v.008h-.008V15zm0 2.25h.008v.008h-.008v-.008zm2.25-4.5h.008v.008H16.5v-.008zm0 2.25h.008v.008H16.5V15z" />
-                    </svg>
-                </div>
-            </div>
-            <div class="mt-4 flex items-center gap-2">
-                <span class="badge badge-violet">Bulan Ini</span>
-                <span class="text-xs text-gray-500">Surat Diterbitkan</span>
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-5 h-5 shrink-0 text-slate-400" aria-hidden="true">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5m-9-6h.008v.008H12v-.008zM12 15h.008v.008H12V15zm0 2.25h.008v.008H12v-.008zM9.75 15h.008v.008H9.75V15zm0 2.25h.008v.008H9.75v-.008zM7.5 15h.008v.008H7.5V15zm0 2.25h.008v.008H7.5v-.008zm6.75-4.5h.008v.008h-.008v-.008zm0 2.25h.008v.008h-.008V15zm0 2.25h.008v.008h-.008v-.008zm2.25-4.5h.008v.008H16.5v-.008zm0 2.25h.008v.008H16.5V15z" />
+                </svg>
             </div>
         </div>
 
-        <!-- Card 4: Surat Hari Ini -->
-        <div class="stat-card teal">
-            <div class="flex justify-between items-start">
+        <div class="stat-card">
+            <div class="flex items-start justify-between gap-4">
                 <div>
-                    <p class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Surat Hari Ini</p>
-                    <h3 class="text-3xl font-bold text-gray-900"><?php echo $surat_hari_ini; ?></h3>
+                    <p class="text-[11px] font-medium uppercase tracking-wider text-gray-500">Surat Hari Ini</p>
+                    <h3 class="mt-2 text-3xl font-bold tracking-tight text-gray-900"><?php echo $surat_hari_ini; ?></h3>
                 </div>
-                <div class="stat-icon teal">
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-5 h-5">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                </div>
-            </div>
-            <div class="mt-4 flex items-center gap-2">
-                <span class="badge badge-emerald">Hari Ini</span>
-                <span class="text-xs text-gray-500">Surat Diterbitkan</span>
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-5 h-5 shrink-0 text-slate-400" aria-hidden="true">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
             </div>
         </div>
     </div>
