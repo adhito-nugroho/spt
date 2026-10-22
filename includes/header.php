@@ -1,3 +1,46 @@
+<?php
+if (session_status() === PHP_SESSION_NONE && !headers_sent()) {
+    session_start();
+}
+
+$headerUser = isset($_SESSION['user']) && is_array($_SESSION['user']) ? $_SESSION['user'] : [];
+$userName = trim((string)($headerUser['nama'] ?? $_SESSION['nama'] ?? ''));
+$userJabatanRaw = trim((string)($headerUser['jabatan'] ?? $_SESSION['jabatan'] ?? ''));
+$userNip = trim((string)($headerUser['nip'] ?? $_SESSION['nip'] ?? ''));
+
+if ($userName === '' && isset($pdo) && $pdo instanceof PDO) {
+    try {
+        if ($userNip !== '') {
+            $stmtHeaderUser = $pdo->prepare("SELECT nama, jabatan FROM pegawai WHERE nip = ? LIMIT 1");
+            $stmtHeaderUser->execute([$userNip]);
+        } else {
+            $stmtHeaderUser = $pdo->query("SELECT nama, jabatan FROM pegawai ORDER BY nip ASC LIMIT 1");
+        }
+
+        $pegawaiHeader = $stmtHeaderUser->fetch();
+        if ($pegawaiHeader) {
+            $userName = trim((string)($pegawaiHeader['nama'] ?? ''));
+            $userJabatanRaw = trim((string)($pegawaiHeader['jabatan'] ?? ''));
+        }
+    } catch (PDOException $e) {
+        error_log('Gagal memuat data user header: ' . $e->getMessage());
+    }
+}
+
+if ($userName === '') {
+    $userName = 'Pegawai CDK Bojonegoro';
+}
+
+$userJabatan = trim((string)preg_replace('/\s+pada\s+.*$/i', '', $userJabatanRaw));
+if ($userJabatan === '') {
+    $userJabatan = 'Pegawai';
+}
+
+$userUnit = 'CDK Wilayah Bojonegoro';
+$userInitial = function_exists('mb_substr')
+    ? mb_strtoupper(mb_substr($userName, 0, 1, 'UTF-8'), 'UTF-8')
+    : strtoupper(substr($userName, 0, 1));
+?>
 <!DOCTYPE html>
 <html lang="id">
 <head>
@@ -132,7 +175,7 @@
                 
                 <div class="flex items-center gap-3 ml-auto">
                     <!-- Notification Bell Button -->
-                    <button class="relative p-1.5 text-gray-400 hover:text-indigo-600 hover:bg-gray-50 rounded-lg transition-colors" aria-label="Notifikasi">
+                    <button class="relative p-1.5 text-gray-400 hover:text-primary hover:bg-gray-50 rounded-lg transition-colors" aria-label="Notifikasi">
                         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5">
                             <path stroke-linecap="round" stroke-linejoin="round" d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75v-.7V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0" />
                         </svg>
@@ -142,13 +185,14 @@
                     <!-- Separator -->
                     <div class="h-8 w-px bg-gray-200"></div>
 
-                    <div class="flex items-center gap-2.5">
-                        <div class="text-right hidden sm:block">
-                            <p class="text-sm font-semibold text-gray-800">Admin User</p>
-                            <p class="text-xs text-gray-400">Administrator</p>
+                    <div class="flex min-w-0 items-center gap-2.5">
+                        <div class="hidden min-w-0 max-w-[15rem] text-right sm:block">
+                            <p class="truncate text-sm font-semibold leading-tight text-gray-800"><?= htmlspecialchars($userName, ENT_QUOTES, 'UTF-8') ?></p>
+                            <p class="truncate text-[11px] leading-tight text-gray-500" title="<?= htmlspecialchars($userJabatanRaw, ENT_QUOTES, 'UTF-8') ?>"><?= htmlspecialchars($userJabatan, ENT_QUOTES, 'UTF-8') ?></p>
+                            <p class="truncate text-[10px] leading-tight text-gray-400"><?= htmlspecialchars($userUnit, ENT_QUOTES, 'UTF-8') ?></p>
                         </div>
-                        <div class="h-9 w-9 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 font-bold text-sm">
-                            A
+                        <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary-light text-sm font-bold text-primary ring-1 ring-primary-border">
+                            <?= htmlspecialchars($userInitial, ENT_QUOTES, 'UTF-8') ?>
                         </div>
                     </div>
                 </div>
