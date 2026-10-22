@@ -220,6 +220,732 @@ function konversi_docx_ke_pdf_libreoffice($pathDocx) {
     return null;
 }
 
+/**
+ * =====================================================================
+ * INTERACTIVE LAYOUT & MARGIN ADJUSTER
+ * =====================================================================
+ * Semua parameter layout dikirim lewat query string, misalnya:
+ * generate-surat.php?id=1&format=pdf&layout=1&margin_top=15&font_size=11...
+ *
+ * Karena PDF utama dihasilkan dari DOCX (Word COM / LibreOffice), parameter
+ * layout diterapkan langsung ke properti OOXML (margin halaman, ukuran font,
+ * line-height, jarak paragraf, indentasi blok TTD). Untuk fallback Dompdf,
+ * parameter yang sama juga disuntikkan sebagai CSS ke HTML sebelum
+ * $dompdf->loadHtml() dipanggil oleh renderer PHPWord.
+ */
+
+function spt_layout_default_values()
+{
+    return [
+        'margin_top' => 15,
+        'margin_bottom' => 15,
+        'margin_left' => 20,
+        'margin_right' => 20,
+        'font_size' => 11,
+        'line_height' => 1.0,
+        'kop_offset' => 0,
+        'section_spacing' => 0,
+        'ttd_offset' => 0,
+        'ttd_x' => 0,
+        'lock_ttd' => 0,
+    ];
+}
+
+function spt_layout_ranges()
+{
+    return [
+        'margin_top' => [5, 40, 0.5],
+        'margin_bottom' => [5, 40, 0.5],
+        'margin_left' => [10, 40, 0.5],
+        'margin_right' => [10, 40, 0.5],
+        'font_size' => [9, 13, 0.5],
+        'line_height' => [1.0, 2.0, 0.05],
+        'kop_offset' => [-20, 60, 1],
+        'section_spacing' => [0, 30, 1],
+        'ttd_offset' => [-20, 100, 1],
+        'ttd_x' => [-50, 50, 1],
+    ];
+}
+
+function spt_layout_clamp($value, $min, $max)
+{
+    $value = (float)$value;
+    if ($value < $min) {
+        return $min;
+    }
+    if ($value > $max) {
+        return $max;
+    }
+    return $value;
+}
+
+function spt_layout_round($value, $step)
+{
+    if ($step <= 0) {
+        return $value;
+    }
+    return round(round((float)$value / $step) * $step, 3);
+}
+
+/**
+ * Baca parameter layout dari query string. Return null jika user belum
+ * mengaktifkan penyesuaian (agar halaman awal tetap memakai template asli).
+ */
+function spt_layout_request_settings()
+{
+    $keys = array_keys(spt_layout_ranges());
+    $active = isset($_GET['layout']) && (string)$_GET['layout'] === '1';
+    if (!$active) {
+        foreach ($keys as $key) {
+            if (isset($_GET[$key])) {
+                $active = true;
+                break;
+            }
+        }
+    }
+    if (!$active) {
+        return null;
+    }
+
+    $settings = [];
+    foreach (spt_layout_ranges() as $key => $range) {
+        if (isset($_GET[$key]) && is_scalar($_GET[$key])) {
+            $settings[$key] = spt_layout_round(
+                spt_layout_clamp($_GET[$key], $range[0], $range[1]),
+                $range[2]
+            );
+        }
+    }
+    $settings['lock_ttd'] = (isset($_GET['lock_ttd']) && (string)$_GET['lock_ttd'] === '1') ? 1 : 0;
+
+    return $settings;
+}
+
+function spt_layout_query_params(array $settings)
+{
+    $params = ['layout' => '1'];
+    foreach (array_keys(spt_layout_ranges()) as $key) {
+        $params[$key] = $settings[$key] ?? spt_layout_default_values()[$key];
+    }
+    $params['lock_ttd'] = !empty($settings['lock_ttd']) ? '1' : '0';
+    return $params;
+}
+
+function spt_layout_mm_to_twips($mm)
+{
+    return (int)round(((float)$mm) * 1440 / 25.4);
+}
+
+function spt_layout_px_to_twips($px)
+{
+    return (int)round(((float)$px) * 15);
+}
+
+function spt_layout_w_ns()
+{
+    return 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
+}
+
+function spt_layout_load_dom($xml)
+{
+    if (!is_string($xml) || $xml === '') {
+        return null;
+    }
+    $dom = new DOMDocument('1.0', 'UTF-8');
+    $dom->preserveWhiteSpace = true;
+    $dom->formatOutput = false;
+    $prev = libxml_use_internal_errors(true);
+    $ok = $dom->loadXML($xml, LIBXML_NONET);
+    libxml_clear_errors();
+    libxml_use_internal_errors($prev);
+
+    return $ok ? $dom : null;
+}
+
+function spt_layout_child(DOMElement $parent, $localName)
+{
+    foreach ($parent->childNodes as $child) {
+        if ($child instanceof DOMElement && $child->localName === $localName) {
+            return $child;
+        }
+    }
+    return null;
+}
+
+function spt_layout_insert_ordered(DOMElement $parent, DOMElement $element, array $order)
+{
+    $rank = array_search($element->localName, $order, true);
+    foreach ($parent->childNodes as $child) {
+        if (!$child instanceof DOMElement) {
+            continue;
+        }
+        $childRank = array_search($child->localName, $order, true);
+        if ($childRank !== false && ($rank === false || $childRank > $rank)) {
+            $parent->insertBefore($element, $child);
+            return;
+        }
+    }
+    $parent->appendChild($element);
+}
+
+function spt_layout_paragraph_properties(DOMElement $paragraph, DOMDocument $dom)
+{
+    $pPr = spt_layout_child($paragraph, 'pPr');
+    if ($pPr) {
+        return $pPr;
+    }
+
+    $pPr = $dom->createElementNS(spt_layout_w_ns(), 'w:pPr');
+    if ($paragraph->firstChild) {
+        $paragraph->insertBefore($pPr, $paragraph->firstChild);
+    } else {
+        $paragraph->appendChild($pPr);
+    }
+    return $pPr;
+}
+
+function spt_layout_spacing(DOMElement $paragraph, DOMDocument $dom)
+{
+    $pPr = spt_layout_paragraph_properties($paragraph, $dom);
+    $spacing = spt_layout_child($pPr, 'spacing');
+    if ($spacing) {
+        return $spacing;
+    }
+
+    $spacing = $dom->createElementNS(spt_layout_w_ns(), 'w:spacing');
+    spt_layout_insert_ordered($pPr, $spacing, [
+        'pStyle', 'keepNext', 'keepLines', 'pageBreakBefore', 'framePr', 'widowControl',
+        'numPr', 'suppressLineNumbers', 'pBdr', 'shd', 'tabs', 'suppressAutoHyphens',
+        'kinsoku', 'wordWrap', 'overflowPunct', 'topLinePunct', 'autoSpaceDE',
+        'autoSpaceDN', 'bidi', 'adjustRightInd', 'snapToGrid', 'spacing', 'ind',
+        'contextualSpacing', 'mirrorIndents', 'suppressOverlap', 'jc', 'textDirection',
+        'textAlignment', 'textboxTightWrap', 'outlineLvl', 'divId', 'cnfStyle', 'rPr',
+        'sectPr', 'pPrChange',
+    ]);
+    return $spacing;
+}
+
+function spt_layout_indentation(DOMElement $paragraph, DOMDocument $dom)
+{
+    $pPr = spt_layout_paragraph_properties($paragraph, $dom);
+    $ind = spt_layout_child($pPr, 'ind');
+    if ($ind) {
+        return $ind;
+    }
+
+    $ind = $dom->createElementNS(spt_layout_w_ns(), 'w:ind');
+    spt_layout_insert_ordered($pPr, $ind, [
+        'pStyle', 'keepNext', 'keepLines', 'pageBreakBefore', 'framePr', 'widowControl',
+        'numPr', 'suppressLineNumbers', 'pBdr', 'shd', 'tabs', 'suppressAutoHyphens',
+        'kinsoku', 'wordWrap', 'overflowPunct', 'topLinePunct', 'autoSpaceDE',
+        'autoSpaceDN', 'bidi', 'adjustRightInd', 'snapToGrid', 'spacing', 'ind',
+        'contextualSpacing', 'mirrorIndents', 'suppressOverlap', 'jc', 'textDirection',
+        'textAlignment', 'textboxTightWrap', 'outlineLvl', 'divId', 'cnfStyle', 'rPr',
+        'sectPr', 'pPrChange',
+    ]);
+    return $ind;
+}
+
+function spt_layout_paragraph_text(DOMElement $paragraph)
+{
+    $text = '';
+    foreach ($paragraph->getElementsByTagNameNS(spt_layout_w_ns(), 't') as $node) {
+        $text .= $node->textContent;
+    }
+    return trim(preg_replace('/\s+/u', ' ', $text));
+}
+
+function spt_layout_reduce_spacing(DOMElement $spacing, $attribute, $amount)
+{
+    $ns = spt_layout_w_ns();
+    $qualified = 'w:' . $attribute;
+    if ($amount <= 0 || !$spacing->hasAttributeNS($ns, $attribute)) {
+        return $amount;
+    }
+    $current = (int)$spacing->getAttributeNS($ns, $attribute);
+    $used = min($current, $amount);
+    $spacing->setAttributeNS($ns, $qualified, (string)($current - $used));
+    return $amount - $used;
+}
+
+/**
+ * Geser jarak vertikal paragraf. Nilai positif menambah spacing sebelum
+ * paragraf; nilai negatif mengurangi spacing paragraf sebelumnya.
+ */
+function spt_layout_shift_gap(DOMElement $paragraph, $deltaTwips, DOMDocument $dom)
+{
+    if ($deltaTwips === 0) {
+        return;
+    }
+
+    $ns = spt_layout_w_ns();
+    $spacing = spt_layout_spacing($paragraph, $dom);
+
+    if ($deltaTwips > 0) {
+        $current = $spacing->hasAttributeNS($ns, 'before')
+            ? (int)$spacing->getAttributeNS($ns, 'before')
+            : 0;
+        $spacing->setAttributeNS($ns, 'w:before', (string)($current + $deltaTwips));
+        return;
+    }
+
+    $remaining = abs((int)$deltaTwips);
+    $remaining = spt_layout_reduce_spacing($spacing, 'before', $remaining);
+
+    $previous = $paragraph->previousSibling;
+    while ($previous && $remaining > 0) {
+        if ($previous instanceof DOMElement && $previous->localName === 'p') {
+            $previousSpacing = spt_layout_spacing($previous, $dom);
+            $remaining = spt_layout_reduce_spacing($previousSpacing, 'after', $remaining);
+            if ($remaining > 0) {
+                $remaining = spt_layout_reduce_spacing($previousSpacing, 'before', $remaining);
+            }
+        }
+        $previous = $previous->previousSibling;
+    }
+}
+
+function spt_layout_add_keep_flag(DOMElement $paragraph, $flag, DOMDocument $dom)
+{
+    $pPr = spt_layout_paragraph_properties($paragraph, $dom);
+    if (spt_layout_child($pPr, $flag)) {
+        return;
+    }
+
+    $element = $dom->createElementNS(spt_layout_w_ns(), 'w:' . $flag);
+    spt_layout_insert_ordered($pPr, $element, [
+        'pStyle', 'keepNext', 'keepLines', 'pageBreakBefore', 'framePr', 'widowControl',
+        'numPr', 'suppressLineNumbers', 'pBdr', 'shd', 'tabs', 'suppressAutoHyphens',
+        'kinsoku', 'wordWrap', 'overflowPunct', 'topLinePunct', 'autoSpaceDE',
+        'autoSpaceDN', 'bidi', 'adjustRightInd', 'snapToGrid', 'spacing', 'ind',
+        'contextualSpacing', 'mirrorIndents', 'suppressOverlap', 'jc', 'textDirection',
+        'textAlignment', 'textboxTightWrap', 'outlineLvl', 'divId', 'cnfStyle', 'rPr',
+        'sectPr', 'pPrChange',
+    ]);
+}
+
+function spt_layout_detect_dominant_font_size(DOMDocument $document)
+{
+    $xpath = new DOMXPath($document);
+    $xpath->registerNamespace('w', spt_layout_w_ns());
+    $counts = [];
+    foreach ($xpath->query('//w:sz') as $node) {
+        $value = (int)$node->getAttributeNS(spt_layout_w_ns(), 'val');
+        if ($value > 0) {
+            $counts[$value] = ($counts[$value] ?? 0) + 1;
+        }
+    }
+    if (empty($counts)) {
+        return 22;
+    }
+    arsort($counts);
+    return (int)key($counts);
+}
+
+function spt_layout_scale_font_sizes(DOMDocument $document, $factor)
+{
+    if (abs($factor - 1.0) < 0.0001) {
+        return;
+    }
+
+    $ns = spt_layout_w_ns();
+    $xpath = new DOMXPath($document);
+    $xpath->registerNamespace('w', $ns);
+    foreach ($xpath->query('//w:sz | //w:szCs') as $node) {
+        $value = (int)$node->getAttributeNS($ns, 'val');
+        if ($value <= 0) {
+            continue;
+        }
+        $newValue = max(2, min(3276, (int)round($value * $factor)));
+        $node->setAttributeNS($ns, 'w:val', (string)$newValue);
+    }
+}
+
+function spt_layout_set_page_margins(DOMDocument $document, array $settings)
+{
+    $ns = spt_layout_w_ns();
+    $xpath = new DOMXPath($document);
+    $xpath->registerNamespace('w', $ns);
+    $margins = [
+        'top' => spt_layout_mm_to_twips($settings['margin_top']),
+        'bottom' => spt_layout_mm_to_twips($settings['margin_bottom']),
+        'left' => spt_layout_mm_to_twips($settings['margin_left']),
+        'right' => spt_layout_mm_to_twips($settings['margin_right']),
+    ];
+
+    foreach ($xpath->query('//w:sectPr') as $section) {
+        $pgMar = spt_layout_child($section, 'pgMar');
+        if (!$pgMar) {
+            $pgMar = $document->createElementNS($ns, 'w:pgMar');
+            spt_layout_insert_ordered($section, $pgMar, [
+                'headerReference', 'footerReference', 'footnotePr', 'endnotePr', 'type',
+                'pgSz', 'pgMar', 'paperSrc', 'pgBorders', 'lnNumType', 'pgNumType',
+                'cols', 'formProt', 'vAlign', 'noEndnote', 'titlePg', 'textDirection',
+                'bidi', 'rtlGutter', 'docGrid', 'printerSettings', 'sectPrChange',
+            ]);
+        }
+        foreach ($margins as $side => $twips) {
+            $pgMar->setAttributeNS($ns, 'w:' . $side, (string)$twips);
+        }
+    }
+}
+
+/**
+ * Terapkan semua parameter layout ke file DOCX (in-place).
+ * Dipakai untuk pipeline Word COM & LibreOffice agar hasil PDF ikut berubah.
+ */
+function spt_layout_apply_to_docx($docxPath, array $settings)
+{
+    if (!class_exists('ZipArchive') || !is_file($docxPath)) {
+        return false;
+    }
+
+    $zip = new ZipArchive();
+    if ($zip->open($docxPath) !== true) {
+        return false;
+    }
+
+    try {
+        $documentXml = $zip->getFromName('word/document.xml');
+        $stylesXml = $zip->getFromName('word/styles.xml');
+        $document = spt_layout_load_dom($documentXml);
+        if (!$document) {
+            $zip->close();
+            return false;
+        }
+
+        $ns = spt_layout_w_ns();
+        $xpath = new DOMXPath($document);
+        $xpath->registerNamespace('w', $ns);
+
+        $baseHalfPoints = spt_layout_detect_dominant_font_size($document);
+        $targetHalfPoints = (float)$settings['font_size'] * 2;
+        $factor = $baseHalfPoints > 0 ? ($targetHalfPoints / $baseHalfPoints) : 1.0;
+
+        spt_layout_set_page_margins($document, $settings);
+        spt_layout_scale_font_sizes($document, $factor);
+
+        // Line-height: hanya diubah jika user memang mengubahnya dari default
+        // template. Spacing yang sudah ada diskalakan agar jarak khusus (mis.
+        // ruang gambar TTD) tetap proporsional.
+        $baseLineHeight = spt_layout_detect_default_line_height($documentXml);
+        $lineChanged = abs((float)$settings['line_height'] - $baseLineHeight) > 0.0001;
+        if ($lineChanged) {
+            $lineRatio = (float)$settings['line_height'] / max(0.1, $baseLineHeight);
+            $lineTwips = (int)round(((float)$settings['line_height']) * 240);
+            foreach ($xpath->query('//w:body//w:p') as $paragraph) {
+                $spacing = spt_layout_spacing($paragraph, $document);
+                if ($spacing->hasAttributeNS($ns, 'line')) {
+                    $oldLine = (int)$spacing->getAttributeNS($ns, 'line');
+                    if ($oldLine > 0) {
+                        $spacing->setAttributeNS($ns, 'w:line', (string)max(1, (int)round($oldLine * $lineRatio)));
+                    } else {
+                        $spacing->setAttributeNS($ns, 'w:line', (string)$lineTwips);
+                    }
+                    if (!$spacing->hasAttributeNS($ns, 'lineRule')) {
+                        $spacing->setAttributeNS($ns, 'w:lineRule', 'auto');
+                    }
+                } else {
+                    $spacing->setAttributeNS($ns, 'w:line', (string)$lineTwips);
+                    $spacing->setAttributeNS($ns, 'w:lineRule', 'auto');
+                }
+            }
+        }
+
+        $paragraphs = [];
+        foreach ($xpath->query('//w:body//w:p') as $paragraph) {
+            $paragraphs[] = $paragraph;
+        }
+
+        // Jarak kop ke judul: cari paragraf judul "SURAT TUGAS".
+        $kopOffset = spt_layout_px_to_twips($settings['kop_offset']);
+        if ($kopOffset !== 0) {
+            foreach ($paragraphs as $paragraph) {
+                $text = spt_layout_paragraph_text($paragraph);
+                if ($text !== '' && stripos($text, 'SURAT TUGAS') !== false) {
+                    spt_layout_shift_gap($paragraph, $kopOffset, $document);
+                    break;
+                }
+            }
+        }
+
+        // Jarak antar bagian DASAR / KEPADA / UNTUK.
+        $sectionSpacing = spt_layout_px_to_twips($settings['section_spacing']);
+        if ($sectionSpacing > 0) {
+            foreach ($paragraphs as $paragraph) {
+                $text = spt_layout_paragraph_text($paragraph);
+                if ($text !== '' && preg_match('/^(DASAR|KEPADA|UNTUK|MEMERINTAHKAN)\b/iu', $text)) {
+                    spt_layout_shift_gap($paragraph, $sectionSpacing, $document);
+                }
+            }
+        }
+
+        // Cari awal blok tanda tangan: baris "Bojonegoro <tanggal>".
+        $ttdStart = null;
+        $ttdEnd = null;
+        $paragraphCount = count($paragraphs);
+        foreach ($paragraphs as $index => $paragraph) {
+            $text = spt_layout_paragraph_text($paragraph);
+            if ($text === '') {
+                continue;
+            }
+            $isPlaceLine = stripos($text, 'Bojonegoro') !== false
+                && stripos($text, 'Jalan') === false
+                && stripos($text, 'DINAS') === false
+                && stripos($text, 'KABUPATEN') === false;
+            if ($isPlaceLine) {
+                $ttdStart = $index;
+                break;
+            }
+        }
+        if ($ttdStart === null) {
+            foreach ($paragraphs as $index => $paragraph) {
+                $text = spt_layout_paragraph_text($paragraph);
+                if (stripos($text, 'Kepala') !== false && stripos($text, 'Cabang Dinas') !== false) {
+                    $ttdStart = max(0, $index - 1);
+                    break;
+                }
+            }
+        }
+        if ($ttdStart !== null) {
+            $ttdEnd = $ttdStart;
+            $limit = min($paragraphCount - 1, $ttdStart + 15);
+            for ($i = $ttdStart; $i <= $limit; $i++) {
+                $text = spt_layout_paragraph_text($paragraphs[$i]);
+                if (stripos($text, 'Lampiran') !== false && $i > $ttdStart) {
+                    break;
+                }
+                $ttdEnd = $i;
+                if (stripos($text, 'NIP') !== false) {
+                    break;
+                }
+            }
+
+            $ttdOffset = spt_layout_px_to_twips($settings['ttd_offset']);
+            if ($ttdOffset !== 0) {
+                spt_layout_shift_gap($paragraphs[$ttdStart], $ttdOffset, $document);
+            }
+
+            $ttdIndent = spt_layout_px_to_twips($settings['ttd_x']);
+            if ($ttdIndent !== 0) {
+                for ($i = $ttdStart; $i <= $ttdEnd; $i++) {
+                    $ind = spt_layout_indentation($paragraphs[$i], $document);
+                    $current = $ind->hasAttributeNS($ns, 'left')
+                        ? (int)$ind->getAttributeNS($ns, 'left')
+                        : 0;
+                    $ind->setAttributeNS($ns, 'w:left', (string)($current + $ttdIndent));
+                }
+            }
+
+            if (!empty($settings['lock_ttd'])) {
+                for ($i = $ttdStart; $i <= $ttdEnd; $i++) {
+                    spt_layout_add_keep_flag($paragraphs[$i], 'keepLines', $document);
+                    if ($i < $ttdEnd) {
+                        spt_layout_add_keep_flag($paragraphs[$i], 'keepNext', $document);
+                    }
+                }
+            }
+        }
+
+        $styles = $stylesXml !== false ? spt_layout_load_dom($stylesXml) : null;
+        if ($styles) {
+            spt_layout_scale_font_sizes($styles, $factor);
+        }
+
+        $zip->addFromString('word/document.xml', $document->saveXML());
+        if ($styles) {
+            $zip->addFromString('word/styles.xml', $styles->saveXML());
+        }
+        $zip->close();
+        return true;
+    } catch (Throwable $e) {
+        error_log('Layout adjuster DOCX error: ' . $e->getMessage());
+        try {
+            $zip->close();
+        } catch (Throwable $e2) {
+            // ignore
+        }
+        return false;
+    }
+}
+
+function spt_layout_detect_default_line_height($documentXml)
+{
+    $counts = [];
+    if (preg_match_all('/<w:spacing\b[^>]*w:line="(\d+)"[^>]*w:lineRule="auto"[^>]*>/i', $documentXml, $matches)) {
+        foreach ($matches[1] as $line) {
+            $line = (int)$line;
+            if ($line > 0) {
+                $counts[$line] = ($counts[$line] ?? 0) + 1;
+            }
+        }
+    }
+    if (empty($counts) && preg_match_all('/<w:spacing\b[^>]*w:line="(\d+)"/i', $documentXml, $matches)) {
+        foreach ($matches[1] as $line) {
+            $line = (int)$line;
+            if ($line > 0) {
+                $counts[$line] = ($counts[$line] ?? 0) + 1;
+            }
+        }
+    }
+    if (empty($counts)) {
+        return 1.0;
+    }
+    arsort($counts);
+    $dominant = (int)key($counts);
+    return spt_layout_round(
+        spt_layout_clamp($dominant / 240, 1.0, 2.0),
+        0.05
+    );
+}
+
+/**
+ * Cari nilai default (margin & font) dari template DOCX supaya slider
+ * menampilkan angka yang mendekati template asli.
+ */
+function spt_layout_read_docx_defaults($docxPath)
+{
+    $defaults = spt_layout_default_values();
+    if (!class_exists('ZipArchive') || !is_file($docxPath)) {
+        return $defaults;
+    }
+
+    $zip = new ZipArchive();
+    if ($zip->open($docxPath) !== true) {
+        return $defaults;
+    }
+
+    $documentXml = $zip->getFromName('word/document.xml');
+    $zip->close();
+    if ($documentXml === false) {
+        return $defaults;
+    }
+
+    if (preg_match('/<w:pgMar\b[^>]*>/i', $documentXml, $match)) {
+        foreach (['top', 'bottom', 'left', 'right'] as $side) {
+            if (preg_match('/w:' . $side . '="(-?\d+)"/i', $match[0], $value)) {
+                $defaults['margin_' . $side] = round(((int)$value[1]) * 25.4 / 1440, 1);
+            }
+        }
+    }
+
+    $counts = [];
+    if (preg_match_all('/<w:sz\s+w:val="(\d+)"/i', $documentXml, $matches)) {
+        foreach ($matches[1] as $halfPoint) {
+            $halfPoint = (int)$halfPoint;
+            if ($halfPoint > 0) {
+                $counts[$halfPoint] = ($counts[$halfPoint] ?? 0) + 1;
+            }
+        }
+        if (!empty($counts)) {
+            arsort($counts);
+            $defaults['font_size'] = spt_layout_round(key($counts) / 2, 0.5);
+        }
+    }
+
+    $defaults['line_height'] = spt_layout_detect_default_line_height($documentXml);
+
+    // Samakan dengan batas slider agar UI tidak menampilkan nilai di luar range.
+    foreach (spt_layout_ranges() as $key => $range) {
+        if (isset($defaults[$key])) {
+            $defaults[$key] = spt_layout_round(
+                spt_layout_clamp($defaults[$key], $range[0], $range[1]),
+                $range[2]
+            );
+        }
+    }
+
+    return $defaults;
+}
+
+/**
+ * CSS dinamis untuk fallback Dompdf. Blok ini disuntikkan ke HTML
+ * sebelum renderer memanggil $dompdf->loadHtml().
+ */
+function spt_layout_build_css(array $settings)
+{
+    $mt = number_format((float)$settings['margin_top'], 2, '.', '');
+    $mb = number_format((float)$settings['margin_bottom'], 2, '.', '');
+    $ml = number_format((float)$settings['margin_left'], 2, '.', '');
+    $mr = number_format((float)$settings['margin_right'], 2, '.', '');
+    $font = number_format((float)$settings['font_size'], 2, '.', '');
+    $line = number_format((float)$settings['line_height'], 2, '.', '');
+    $titleGap = max(0, 12 + (int)$settings['kop_offset']);
+    $sectionGap = max(0, (int)$settings['section_spacing']);
+    $ttdGap = max(0, (int)$settings['ttd_offset']);
+    $ttdX = (int)$settings['ttd_x'];
+
+    $css = '<style>' . PHP_EOL;
+    $css .= '@page { margin: ' . $mt . 'mm ' . $mr . 'mm ' . $mb . 'mm ' . $ml . 'mm; }' . PHP_EOL;
+    $css .= 'body { font-size: ' . $font . 'pt; line-height: ' . $line . '; }' . PHP_EOL;
+    $css .= 'p, td, th, li, span { font-size: ' . $font . 'pt !important; line-height: ' . $line . ' !important; }' . PHP_EOL;
+    $css .= '.spt-title { margin-top: ' . $titleGap . 'px !important; }' . PHP_EOL;
+    $css .= '.spt-section { margin-top: ' . $sectionGap . 'px !important; }' . PHP_EOL;
+    $css .= '.spt-ttd { margin-top: ' . $ttdGap . 'px !important; margin-left: ' . $ttdX . 'px !important; }' . PHP_EOL;
+    if (!empty($settings['lock_ttd'])) {
+        $css .= '.spt-ttd, table { page-break-inside: avoid !important; }' . PHP_EOL;
+    }
+    $css .= '</style>';
+
+    return $css;
+}
+
+/**
+ * Tambahkan class penanda pada HTML hasil PHPWord agar CSS layout bisa
+ * menyasar judul, bagian, dan blok tanda tangan. Lalu suntikkan <style>.
+ */
+function spt_layout_inject_html($html, array $settings)
+{
+    $html = preg_replace_callback(
+        '/<(p|h[1-6]|td|th|li|div)\b([^>]*)>(.*?)<\/\1>/is',
+        function ($match) {
+            $text = trim(preg_replace('/\s+/u', ' ', strip_tags($match[3])));
+            if ($text === '') {
+                return $match[0];
+            }
+
+            $classes = [];
+            if (stripos($text, 'SURAT TUGAS') !== false) {
+                $classes[] = 'spt-title';
+            }
+            if (preg_match('/^(DASAR|KEPADA|UNTUK|MEMERINTAHKAN)\b/iu', $text)) {
+                $classes[] = 'spt-section';
+            }
+            if (
+                stripos($text, 'Bojonegoro') !== false
+                || (stripos($text, 'Kepala') !== false && stripos($text, 'Cabang Dinas') !== false)
+                || stripos($text, 'NIP') !== false
+            ) {
+                $classes[] = 'spt-ttd';
+            }
+            if (empty($classes)) {
+                return $match[0];
+            }
+
+            $attributes = $match[2];
+            if (preg_match('/class="([^"]*)"/i', $attributes, $classMatch)) {
+                $attributes = preg_replace(
+                    '/class="[^"]*"/i',
+                    'class="' . trim($classMatch[1] . ' ' . implode(' ', $classes)) . '"',
+                    $attributes,
+                    1
+                );
+            } else {
+                $attributes .= ' class="' . implode(' ', $classes) . '"';
+            }
+
+            return '<' . $match[1] . $attributes . '>' . $match[3] . '</' . $match[1] . '>';
+        },
+        $html
+    );
+
+    $css = spt_layout_build_css($settings);
+    if (stripos($html, '</head>') !== false) {
+        return preg_replace('/<\/head>/i', $css . '</head>', $html, 1);
+    }
+    return $css . $html;
+}
+
 if (!isset($_GET['id'])) {
     die("ID surat tugas tidak ditemukan");
 }
@@ -1008,20 +1734,43 @@ try {
     $format = isset($_GET['format']) ? strtolower(trim($_GET['format'])) : '';
     $inlinePdf = isset($_GET['inline']) && $_GET['inline'] === '1';
 
+    // Parameter layout dari panel adjuster (null = pakai template asli).
+    $layout_settings = spt_layout_request_settings();
+    $layout_defaults = spt_layout_read_docx_defaults($template_path);
+    $layout_active = $layout_settings !== null;
+    if ($layout_active) {
+        // Lengkapi parameter yang tidak ada di URL dengan nilai default template.
+        $layout_settings = array_merge($layout_defaults, $layout_settings);
+    }
+    $layout_initial = $layout_active ? $layout_settings : $layout_defaults;
+
     // Preview (tanpa format): tampilkan halaman dengan iframe PDF agar sama persis dengan file Word/PDF
     if ($format === '') {
-        include '../includes/header.php';
         $sid = (int)$_GET['id'];
-        $previewPdfUrl = 'generate-surat.php?id=' . $sid . '&format=pdf&inline=1';
+        $previewQuery = ['id' => $sid, 'format' => 'pdf', 'inline' => '1'];
+        $downloadQuery = ['id' => $sid, 'format' => 'pdf'];
+        if ($layout_active) {
+            $previewQuery = array_merge($previewQuery, spt_layout_query_params($layout_settings));
+            $downloadQuery = array_merge($downloadQuery, spt_layout_query_params($layout_settings));
+        }
+        $previewPdfUrl = 'generate-surat.php?' . http_build_query($previewQuery);
+        $downloadPdfUrl = 'generate-surat.php?' . http_build_query($downloadQuery);
+        $layoutJsonDefaults = json_encode($layout_defaults, JSON_UNESCAPED_UNICODE);
+        $layoutJsonInitial = json_encode($layout_initial, JSON_UNESCAPED_UNICODE);
+
+        include '../includes/header.php';
         ?>
         <div class="space-y-6">
             <div class="flex flex-wrap items-center justify-between gap-4">
-                <h2 class="text-xl font-semibold text-slate-800">Preview Surat Tugas</h2>
+                <div>
+                    <h2 class="text-xl font-semibold text-slate-800">Preview Surat Tugas</h2>
+                    <p class="text-sm text-slate-500 mt-1">Atur tata letak di panel kiri, lalu unduh PDF dengan hasil yang sama persis.</p>
+                </div>
                 <div class="flex flex-wrap gap-3">
                     <a href="generate-surat.php?id=<?= $sid ?>&format=docx" class="inline-flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors">
                         <i class="bx bx-file-blank"></i><span>Download Word (.docx)</span>
                     </a>
-                    <a href="generate-surat.php?id=<?= $sid ?>&format=pdf" class="inline-flex items-center gap-2 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors">
+                    <a id="downloadPdfBtn" href="<?= htmlspecialchars($downloadPdfUrl) ?>" class="inline-flex items-center gap-2 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors">
                         <i class="bx bxs-file-pdf"></i><span>Download PDF</span>
                     </a>
                     <a href="surat-tugas.php" class="inline-flex items-center gap-2 px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-lg transition-colors">
@@ -1054,12 +1803,213 @@ try {
                 </div>
             </div>
             <?php endif; ?>
-            <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-                <p class="text-sm text-slate-500 px-4 py-2 border-b border-slate-200">Tampilan di bawah sama dengan file Word/PDF yang diunduh.</p>
-                <div class="p-4">
-                    <iframe src="<?= htmlspecialchars($previewPdfUrl) ?>" class="w-full border border-slate-200 rounded-lg bg-white" style="min-height: 80vh; height: 297mm;" title="Preview surat (PDF)"></iframe>
+
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+                <!-- Kolom kontrol (setara col-lg-4) -->
+                <div class="lg:col-span-4">
+                    <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden lg:sticky lg:top-4">
+                        <div class="flex items-start justify-between gap-3 px-4 py-3 border-b border-slate-200 bg-slate-50/60">
+                            <div>
+                                <h3 class="font-semibold text-slate-800 flex items-center gap-2">
+                                    <i class="bx bx-slider-alt text-indigo-600"></i>
+                                    Penyesuaian Tata Letak
+                                </h3>
+                                <p class="text-xs text-slate-500 mt-0.5">Geser slider atau gunakan tombol + / − untuk presisi.</p>
+                            </div>
+                            <button type="button" id="layoutToggle" class="p-1.5 rounded-lg text-slate-500 hover:bg-slate-200 transition-colors" title="Buka/tutup panel">
+                                <i class="bx bx-chevron-up text-xl" id="layoutToggleIcon"></i>
+                            </button>
+                        </div>
+
+                        <div id="layoutPanelBody" class="p-4 space-y-5 max-h-[calc(100vh-8rem)] overflow-y-auto">
+                            <div class="space-y-2">
+                                <p class="text-xs font-semibold uppercase tracking-wider text-slate-400">Preset Cepat</p>
+                                <div class="grid grid-cols-2 gap-2">
+                                    <button type="button" id="layoutAutoFit" class="inline-flex items-center justify-center gap-1.5 px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-medium rounded-lg transition-colors">
+                                        <i class="bx bx-collapse-vertical text-base"></i>
+                                        <span>Paksa Muat 1 Halaman</span>
+                                    </button>
+                                    <button type="button" id="layoutReset" class="inline-flex items-center justify-center gap-1.5 px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-medium rounded-lg transition-colors">
+                                        <i class="bx bx-reset text-base"></i>
+                                        <span>Reset ke Default</span>
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div class="space-y-3.5">
+                                <p class="text-xs font-semibold uppercase tracking-wider text-slate-400">Pengaturan Halaman &amp; Huruf</p>
+
+                                <div class="space-y-1.5">
+                                    <div class="flex items-center justify-between gap-2">
+                                        <label class="text-sm font-medium text-slate-700">Margin Atas</label>
+                                        <div class="flex items-center gap-1">
+                                            <button type="button" class="layout-step w-6 h-6 inline-flex items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100" data-target="margin_top" data-dir="-1">−</button>
+                                            <span class="text-xs font-semibold text-slate-700 tabular-nums w-14 text-center"><span data-value="margin_top"><?= htmlspecialchars($layout_initial['margin_top']) ?></span> mm</span>
+                                            <button type="button" class="layout-step w-6 h-6 inline-flex items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100" data-target="margin_top" data-dir="1">+</button>
+                                        </div>
+                                    </div>
+                                    <input type="range" data-layout-key="margin_top" min="5" max="40" step="0.5" value="<?= htmlspecialchars($layout_initial['margin_top']) ?>" class="w-full accent-indigo-600">
+                                    <div class="flex items-center justify-between gap-2">
+                                        <span class="text-[11px] text-slate-400">Rentang 5 – 40 mm</span>
+                                    </div>
+                                </div>
+
+                                <div class="space-y-1.5">
+                                    <div class="flex items-center justify-between gap-2">
+                                        <label class="text-sm font-medium text-slate-700">Margin Bawah</label>
+                                        <div class="flex items-center gap-1">
+                                            <button type="button" class="layout-step w-6 h-6 inline-flex items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100" data-target="margin_bottom" data-dir="-1">−</button>
+                                            <span class="text-xs font-semibold text-slate-700 tabular-nums w-14 text-center"><span data-value="margin_bottom"><?= htmlspecialchars($layout_initial['margin_bottom']) ?></span> mm</span>
+                                            <button type="button" class="layout-step w-6 h-6 inline-flex items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100" data-target="margin_bottom" data-dir="1">+</button>
+                                        </div>
+                                    </div>
+                                    <input type="range" data-layout-key="margin_bottom" min="5" max="40" step="0.5" value="<?= htmlspecialchars($layout_initial['margin_bottom']) ?>" class="w-full accent-indigo-600">
+                                </div>
+
+                                <div class="space-y-1.5">
+                                    <div class="flex items-center justify-between gap-2">
+                                        <label class="text-sm font-medium text-slate-700">Margin Kiri</label>
+                                        <div class="flex items-center gap-1">
+                                            <button type="button" class="layout-step w-6 h-6 inline-flex items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100" data-target="margin_left" data-dir="-1">−</button>
+                                            <span class="text-xs font-semibold text-slate-700 tabular-nums w-14 text-center"><span data-value="margin_left"><?= htmlspecialchars($layout_initial['margin_left']) ?></span> mm</span>
+                                            <button type="button" class="layout-step w-6 h-6 inline-flex items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100" data-target="margin_left" data-dir="1">+</button>
+                                        </div>
+                                    </div>
+                                    <input type="range" data-layout-key="margin_left" min="10" max="40" step="0.5" value="<?= htmlspecialchars($layout_initial['margin_left']) ?>" class="w-full accent-indigo-600">
+                                    <div class="flex items-center justify-between gap-2">
+                                        <span class="text-[11px] text-slate-400">Rentang 10 – 40 mm</span>
+                                    </div>
+                                </div>
+
+                                <div class="space-y-1.5">
+                                    <div class="flex items-center justify-between gap-2">
+                                        <label class="text-sm font-medium text-slate-700">Margin Kanan</label>
+                                        <div class="flex items-center gap-1">
+                                            <button type="button" class="layout-step w-6 h-6 inline-flex items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100" data-target="margin_right" data-dir="-1">−</button>
+                                            <span class="text-xs font-semibold text-slate-700 tabular-nums w-14 text-center"><span data-value="margin_right"><?= htmlspecialchars($layout_initial['margin_right']) ?></span> mm</span>
+                                            <button type="button" class="layout-step w-6 h-6 inline-flex items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100" data-target="margin_right" data-dir="1">+</button>
+                                        </div>
+                                    </div>
+                                    <input type="range" data-layout-key="margin_right" min="10" max="40" step="0.5" value="<?= htmlspecialchars($layout_initial['margin_right']) ?>" class="w-full accent-indigo-600">
+                                </div>
+
+                                <div class="space-y-1.5">
+                                    <div class="flex items-center justify-between gap-2">
+                                        <label class="text-sm font-medium text-slate-700">Ukuran Huruf Global</label>
+                                        <div class="flex items-center gap-1">
+                                            <button type="button" class="layout-step w-6 h-6 inline-flex items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100" data-target="font_size" data-dir="-1">−</button>
+                                            <span class="text-xs font-semibold text-slate-700 tabular-nums w-14 text-center"><span data-value="font_size"><?= htmlspecialchars($layout_initial['font_size']) ?></span> pt</span>
+                                            <button type="button" class="layout-step w-6 h-6 inline-flex items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100" data-target="font_size" data-dir="1">+</button>
+                                        </div>
+                                    </div>
+                                    <input type="range" data-layout-key="font_size" min="9" max="13" step="0.5" value="<?= htmlspecialchars($layout_initial['font_size']) ?>" class="w-full accent-indigo-600">
+                                </div>
+
+                                <div class="space-y-1.5">
+                                    <div class="flex items-center justify-between gap-2">
+                                        <label class="text-sm font-medium text-slate-700">Jarak Antar Baris</label>
+                                        <div class="flex items-center gap-1">
+                                            <button type="button" class="layout-step w-6 h-6 inline-flex items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100" data-target="line_height" data-dir="-1">−</button>
+                                            <span class="text-xs font-semibold text-slate-700 tabular-nums w-14 text-center"><span data-value="line_height"><?= htmlspecialchars($layout_initial['line_height']) ?></span>×</span>
+                                            <button type="button" class="layout-step w-6 h-6 inline-flex items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100" data-target="line_height" data-dir="1">+</button>
+                                        </div>
+                                    </div>
+                                    <input type="range" data-layout-key="line_height" min="1.0" max="2.0" step="0.05" value="<?= htmlspecialchars($layout_initial['line_height']) ?>" class="w-full accent-indigo-600">
+                                </div>
+                            </div>
+
+                            <div class="space-y-3.5 pt-1 border-t border-slate-100">
+                                <p class="text-xs font-semibold uppercase tracking-wider text-slate-400 pt-3">Pengaturan Posisi Bagian</p>
+
+                                <div class="space-y-1.5">
+                                    <div class="flex items-center justify-between gap-2">
+                                        <label class="text-sm font-medium text-slate-700">Jarak Kop ke Judul</label>
+                                        <div class="flex items-center gap-1">
+                                            <button type="button" class="layout-step w-6 h-6 inline-flex items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100" data-target="kop_offset" data-dir="-1">−</button>
+                                            <span class="text-xs font-semibold text-slate-700 tabular-nums w-14 text-center"><span data-value="kop_offset"><?= htmlspecialchars($layout_initial['kop_offset']) ?></span> px</span>
+                                            <button type="button" class="layout-step w-6 h-6 inline-flex items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100" data-target="kop_offset" data-dir="1">+</button>
+                                        </div>
+                                    </div>
+                                    <input type="range" data-layout-key="kop_offset" min="-20" max="60" step="1" value="<?= htmlspecialchars($layout_initial['kop_offset']) ?>" class="w-full accent-indigo-600">
+                                </div>
+
+                                <div class="space-y-1.5">
+                                    <div class="flex items-center justify-between gap-2">
+                                        <label class="text-sm font-medium text-slate-700">Jarak Antar Bagian</label>
+                                        <div class="flex items-center gap-1">
+                                            <button type="button" class="layout-step w-6 h-6 inline-flex items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100" data-target="section_spacing" data-dir="-1">−</button>
+                                            <span class="text-xs font-semibold text-slate-700 tabular-nums w-14 text-center"><span data-value="section_spacing"><?= htmlspecialchars($layout_initial['section_spacing']) ?></span> px</span>
+                                            <button type="button" class="layout-step w-6 h-6 inline-flex items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100" data-target="section_spacing" data-dir="1">+</button>
+                                        </div>
+                                    </div>
+                                    <input type="range" data-layout-key="section_spacing" min="0" max="30" step="1" value="<?= htmlspecialchars($layout_initial['section_spacing']) ?>" class="w-full accent-indigo-600">
+                                </div>
+
+                                <div class="space-y-1.5">
+                                    <div class="flex items-center justify-between gap-2">
+                                        <label class="text-sm font-medium text-slate-700">Jarak Atas Blok TTD</label>
+                                        <div class="flex items-center gap-1">
+                                            <button type="button" class="layout-step w-6 h-6 inline-flex items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100" data-target="ttd_offset" data-dir="-1">−</button>
+                                            <span class="text-xs font-semibold text-slate-700 tabular-nums w-14 text-center"><span data-value="ttd_offset"><?= htmlspecialchars($layout_initial['ttd_offset']) ?></span> px</span>
+                                            <button type="button" class="layout-step w-6 h-6 inline-flex items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100" data-target="ttd_offset" data-dir="1">+</button>
+                                        </div>
+                                    </div>
+                                    <input type="range" data-layout-key="ttd_offset" min="-20" max="100" step="1" value="<?= htmlspecialchars($layout_initial['ttd_offset']) ?>" class="w-full accent-indigo-600">
+                                </div>
+
+                                <div class="space-y-1.5">
+                                    <div class="flex items-center justify-between gap-2">
+                                        <label class="text-sm font-medium text-slate-700">Posisi Horizontal TTD</label>
+                                        <div class="flex items-center gap-1">
+                                            <button type="button" class="layout-step w-6 h-6 inline-flex items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100" data-target="ttd_x" data-dir="-1">−</button>
+                                            <span class="text-xs font-semibold text-slate-700 tabular-nums w-14 text-center"><span data-value="ttd_x"><?= htmlspecialchars($layout_initial['ttd_x']) ?></span> px</span>
+                                            <button type="button" class="layout-step w-6 h-6 inline-flex items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100" data-target="ttd_x" data-dir="1">+</button>
+                                        </div>
+                                    </div>
+                                    <input type="range" data-layout-key="ttd_x" min="-50" max="50" step="1" value="<?= htmlspecialchars($layout_initial['ttd_x']) ?>" class="w-full accent-indigo-600">
+                                </div>
+
+                                <label class="flex items-start gap-2.5 p-3 rounded-lg bg-slate-50 border border-slate-200 cursor-pointer">
+                                    <input type="checkbox" id="layoutLockTtd" class="mt-0.5 accent-indigo-600" <?= !empty($layout_initial['lock_ttd']) ? 'checked' : '' ?>>
+                                    <span class="text-sm text-slate-700">
+                                        Kunci Blok TTD
+                                        <span class="block text-xs text-slate-500">Cegah blok tanda tangan terpotong ke halaman berikutnya.</span>
+                                    </span>
+                                </label>
+                            </div>
+
+                            <button type="button" id="layoutApplyBtn" class="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-slate-800 hover:bg-slate-900 text-white text-sm font-medium rounded-lg transition-colors">
+                                <i class="bx bx-check-double text-base"></i>
+                                <span>Terapkan Perubahan</span>
+                            </button>
+                            <p class="text-[11px] text-slate-400 text-center" id="layoutStatus">Pengaturan default template</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Kolom preview (setara col-lg-8) -->
+                <div class="lg:col-span-8">
+                    <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                        <div class="flex flex-wrap items-center justify-between gap-2 px-4 py-2 border-b border-slate-200">
+                            <p class="text-sm text-slate-500">Tampilan di bawah sama dengan file PDF yang diunduh.</p>
+                            <span class="inline-flex items-center gap-1.5 text-xs font-medium text-indigo-600">
+                                <i class="bx bx-show"></i> Preview PDF
+                            </span>
+                        </div>
+                        <div class="p-4 relative">
+                            <div id="pdfPreviewLoading" class="hidden absolute inset-0 z-10 bg-white/80 backdrop-blur-[1px] flex items-center justify-center rounded-lg">
+                                <div class="flex flex-col items-center gap-2 text-center">
+                                    <div class="animate-spin rounded-full h-9 w-9 border-4 border-indigo-600 border-t-transparent"></div>
+                                    <p class="text-sm font-medium text-slate-700">Memperbarui PDF…</p>
+                                    <p class="text-xs text-slate-500">Menyusun ulang tata letak surat</p>
+                                </div>
+                            </div>
+                            <iframe id="pdfPreviewFrame" src="<?= htmlspecialchars($previewPdfUrl) ?>" class="w-full border border-slate-200 rounded-lg bg-white" style="min-height: 80vh; height: 297mm;" title="Preview surat (PDF)"></iframe>
+                        </div>
+                    </div>
                 </div>
             </div>
+
             <div class="flex justify-center py-4">
                 <a href="surat-tugas.php?edit=<?= $sid ?>" class="inline-flex items-center gap-2 px-6 py-2.5 bg-amber-500 hover:bg-amber-600 text-white font-medium rounded-lg transition-colors shadow-sm">
                     <i class="bx bx-edit text-lg"></i>
@@ -1067,6 +2017,288 @@ try {
                 </a>
             </div>
         </div>
+
+        <script>
+        (function () {
+            const SURAT_ID = <?= json_encode((string)$sid) ?>;
+            const DEFAULTS = <?= $layoutJsonDefaults ?>;
+            const INITIAL = <?= $layoutJsonInitial ?>;
+            const STORAGE_KEY = 'spt_layout_' + SURAT_ID;
+            const STEP_CONFIG = {
+                margin_top: { min: 5, max: 40, step: 0.5, decimals: 1 },
+                margin_bottom: { min: 5, max: 40, step: 0.5, decimals: 1 },
+                margin_left: { min: 10, max: 40, step: 0.5, decimals: 1 },
+                margin_right: { min: 10, max: 40, step: 0.5, decimals: 1 },
+                font_size: { min: 9, max: 13, step: 0.5, decimals: 1 },
+                line_height: { min: 1.0, max: 2.0, step: 0.05, decimals: 2 },
+                kop_offset: { min: -20, max: 60, step: 1, decimals: 0 },
+                section_spacing: { min: 0, max: 30, step: 1, decimals: 0 },
+                ttd_offset: { min: -20, max: 100, step: 1, decimals: 0 },
+                ttd_x: { min: -50, max: 50, step: 1, decimals: 0 }
+            };
+            const KEYS = Object.keys(STEP_CONFIG);
+            const frame = document.getElementById('pdfPreviewFrame');
+            const loading = document.getElementById('pdfPreviewLoading');
+            const downloadBtn = document.getElementById('downloadPdfBtn');
+            const status = document.getElementById('layoutStatus');
+            const lockCheckbox = document.getElementById('layoutLockTtd');
+            const inputs = {};
+            document.querySelectorAll('[data-layout-key]').forEach(function (input) {
+                inputs[input.dataset.layoutKey] = input;
+            });
+
+            let state = Object.assign({}, DEFAULTS, { lock_ttd: 0 });
+            let active = false;
+            let restoredFromStorage = false;
+
+            function clamp(key, value) {
+                const cfg = STEP_CONFIG[key];
+                value = Number(value);
+                if (!isFinite(value)) return Number(DEFAULTS[key] || 0);
+                value = Math.min(cfg.max, Math.max(cfg.min, value));
+                return Number(value.toFixed(cfg.decimals));
+            }
+
+            function formatValue(key, value) {
+                const cfg = STEP_CONFIG[key];
+                return Number(value).toFixed(cfg.decimals);
+            }
+
+            // Prioritas 1: parameter di URL.
+            const urlParams = new URLSearchParams(window.location.search);
+            if (urlParams.get('layout') === '1') {
+                active = true;
+                KEYS.forEach(function (key) {
+                    if (urlParams.has(key)) state[key] = clamp(key, urlParams.get(key));
+                });
+                state.lock_ttd = urlParams.get('lock_ttd') === '1' ? 1 : 0;
+            } else {
+                // Prioritas 2: pengaturan terakhir di localStorage.
+                try {
+                    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null');
+                    if (saved && saved.active) {
+                        KEYS.forEach(function (key) {
+                            if (saved.values && saved.values[key] !== undefined) {
+                                state[key] = clamp(key, saved.values[key]);
+                            }
+                        });
+                        state.lock_ttd = saved.values && saved.values.lock_ttd ? 1 : 0;
+                        active = true;
+                        restoredFromStorage = true;
+                    }
+                } catch (e) {
+                    // abaikan localStorage rusak
+                }
+            }
+
+            function syncUi() {
+                KEYS.forEach(function (key) {
+                    if (inputs[key]) inputs[key].value = state[key];
+                    const output = document.querySelector('[data-value="' + key + '"]');
+                    if (output) output.textContent = formatValue(key, state[key]);
+                });
+                if (lockCheckbox) lockCheckbox.checked = !!state.lock_ttd;
+                updateStatus();
+            }
+
+            function updateStatus() {
+                if (!status) return;
+                status.textContent = active ? 'Kustom aktif — tersimpan otomatis' : 'Pengaturan default template';
+                status.className = active
+                    ? 'text-[11px] text-emerald-600 text-center font-medium'
+                    : 'text-[11px] text-slate-400 text-center';
+            }
+
+            function markActive() {
+                active = true;
+                updateStatus();
+            }
+
+            function buildParams(withInline) {
+                const params = new URLSearchParams();
+                params.set('id', SURAT_ID);
+                params.set('format', 'pdf');
+                if (withInline) params.set('inline', '1');
+                if (active) {
+                    params.set('layout', '1');
+                    KEYS.forEach(function (key) {
+                        params.set(key, state[key]);
+                    });
+                    params.set('lock_ttd', state.lock_ttd ? '1' : '0');
+                }
+                return params;
+            }
+
+            function showLoading(show) {
+                if (!loading) return;
+                loading.classList.toggle('hidden', !show);
+            }
+
+            function applyLayout() {
+                if (!active) {
+                    showLoading(false);
+                    return;
+                }
+
+                const cacheBuster = String(Date.now());
+                const previewParams = buildParams(true);
+                previewParams.set('_ts', cacheBuster);
+                showLoading(true);
+                frame.src = 'generate-surat.php?' + previewParams.toString();
+
+                const downloadParams = buildParams(false);
+                downloadParams.set('_ts', cacheBuster);
+                downloadBtn.href = 'generate-surat.php?' + downloadParams.toString();
+
+                try {
+                    localStorage.setItem(STORAGE_KEY, JSON.stringify({
+                        active: true,
+                        values: Object.assign({}, state, { lock_ttd: state.lock_ttd ? 1 : 0 })
+                    }));
+                } catch (e) {
+                    // localStorage bisa diblokir browser; preview tetap jalan.
+                }
+
+                const historyParams = buildParams(false);
+                historyParams.delete('format');
+                const nextUrl = new URL(window.location.href);
+                nextUrl.search = historyParams.toString();
+                window.history.replaceState(null, '', nextUrl.toString());
+            }
+
+            let debounceTimer = null;
+            function scheduleApply(delay) {
+                if (debounceTimer) clearTimeout(debounceTimer);
+                debounceTimer = setTimeout(applyLayout, typeof delay === 'number' ? delay : 450);
+            }
+
+            KEYS.forEach(function (key) {
+                const input = inputs[key];
+                if (!input) return;
+                input.addEventListener('input', function () {
+                    state[key] = clamp(key, input.value);
+                    const output = document.querySelector('[data-value="' + key + '"]');
+                    if (output) output.textContent = formatValue(key, state[key]);
+                    markActive();
+                    scheduleApply();
+                });
+            });
+
+            document.querySelectorAll('.layout-step').forEach(function (button) {
+                button.addEventListener('click', function () {
+                    const key = button.dataset.target;
+                    const direction = Number(button.dataset.dir || 0);
+                    const cfg = STEP_CONFIG[key];
+                    if (!cfg) return;
+                    state[key] = clamp(key, Number(state[key]) + (direction * cfg.step));
+                    if (inputs[key]) inputs[key].value = state[key];
+                    const output = document.querySelector('[data-value="' + key + '"]');
+                    if (output) output.textContent = formatValue(key, state[key]);
+                    markActive();
+                    scheduleApply(250);
+                });
+            });
+
+            if (lockCheckbox) {
+                lockCheckbox.addEventListener('change', function () {
+                    state.lock_ttd = lockCheckbox.checked ? 1 : 0;
+                    markActive();
+                    scheduleApply(250);
+                });
+            }
+
+            const applyBtn = document.getElementById('layoutApplyBtn');
+            if (applyBtn) {
+                applyBtn.addEventListener('click', function () {
+                    if (debounceTimer) clearTimeout(debounceTimer);
+                    applyLayout();
+                });
+            }
+
+            if (downloadBtn) {
+                downloadBtn.addEventListener('click', function () {
+                    // Pastikan parameter terbaru sudah masuk ke href sebelum browser
+                    // memulai unduhan (jika masih ada debounce yang tertunda).
+                    if (debounceTimer) {
+                        clearTimeout(debounceTimer);
+                        applyLayout();
+                    }
+                });
+            }
+
+            const autoFit = document.getElementById('layoutAutoFit');
+            if (autoFit) {
+                autoFit.addEventListener('click', function () {
+                    state.margin_top = 8;
+                    state.margin_bottom = 8;
+                    state.margin_left = 15;
+                    state.margin_right = 15;
+                    state.font_size = 9;
+                    state.line_height = 1.0;
+                    state.kop_offset = 0;
+                    state.section_spacing = 0;
+                    state.ttd_offset = 0;
+                    state.ttd_x = 0;
+                    state.lock_ttd = 1;
+                    markActive();
+                    syncUi();
+                    if (debounceTimer) clearTimeout(debounceTimer);
+                    applyLayout();
+                });
+            }
+
+            const resetBtn = document.getElementById('layoutReset');
+            if (resetBtn) {
+                resetBtn.addEventListener('click', function () {
+                    active = false;
+                    state = Object.assign({}, DEFAULTS, { lock_ttd: 0 });
+                    try {
+                        localStorage.removeItem(STORAGE_KEY);
+                    } catch (e) {
+                        // ignore
+                    }
+                    syncUi();
+                    if (debounceTimer) clearTimeout(debounceTimer);
+                    const params = new URLSearchParams();
+                    params.set('id', SURAT_ID);
+                    params.set('format', 'pdf');
+                    params.set('inline', '1');
+                    params.set('_ts', String(Date.now()));
+                    showLoading(true);
+                    frame.src = 'generate-surat.php?' + params.toString();
+
+                    downloadBtn.href = 'generate-surat.php?id=' + encodeURIComponent(SURAT_ID) + '&format=pdf';
+                    const nextUrl = new URL(window.location.href);
+                    nextUrl.search = 'id=' + encodeURIComponent(SURAT_ID);
+                    window.history.replaceState(null, '', nextUrl.toString());
+                    updateStatus();
+                });
+            }
+
+            const toggle = document.getElementById('layoutToggle');
+            const panelBody = document.getElementById('layoutPanelBody');
+            const toggleIcon = document.getElementById('layoutToggleIcon');
+            if (toggle && panelBody) {
+                toggle.addEventListener('click', function () {
+                    const hidden = panelBody.classList.toggle('hidden');
+                    if (toggleIcon) toggleIcon.classList.toggle('bx-rotate-180', hidden);
+                });
+            }
+
+            if (frame) {
+                frame.addEventListener('load', function () {
+                    showLoading(false);
+                });
+            }
+
+            syncUi();
+
+            // Jika konfigurasi dipulihkan dari localStorage, langsung render ulang.
+            if (restoredFromStorage) {
+                applyLayout();
+            }
+        })();
+        </script>
         <?php
         include '../includes/footer.php';
         exit;
@@ -1095,6 +2327,24 @@ foreach ($tempCandidates as $candidate) {
     $tempDocx = $tempDir . DIRECTORY_SEPARATOR . 'spt_' . uniqid() . '.docx';
     $templateProcessor->saveAs($tempDocx);
 
+    // Salinan DOCX yang sudah disesuaikan layout, dipakai untuk Word COM/LibreOffice.
+    // File asli tetap disimpan untuk download Word dan fallback Dompdf (CSS injection).
+    $layout_adjusted_docx = null;
+    $pdf_source_docx = $tempDocx;
+    if ($format === 'pdf' && $layout_active && $layout_settings !== null) {
+        $layout_adjusted_docx = $tempDir . DIRECTORY_SEPARATOR . 'spt_layout_' . uniqid() . '.docx';
+        if (@copy($tempDocx, $layout_adjusted_docx)) {
+            if (spt_layout_apply_to_docx($layout_adjusted_docx, $layout_settings)) {
+                $pdf_source_docx = $layout_adjusted_docx;
+            } else {
+                @unlink($layout_adjusted_docx);
+                $layout_adjusted_docx = null;
+            }
+        } else {
+            $layout_adjusted_docx = null;
+        }
+    }
+
     try {
         if ($format === 'pdf') {
             set_time_limit(120); // Word COM / LibreOffice bisa memakan waktu
@@ -1106,7 +2356,7 @@ foreach ($tempCandidates as $candidate) {
             try {
                 // Prioritas 1: Microsoft Word COM (hasil 100% sama dengan Word)
                 if ($hasComSupport) {
-                    $tempPdf = konversi_docx_ke_pdf_word_com($tempDocx, 3);
+                    $tempPdf = konversi_docx_ke_pdf_word_com($pdf_source_docx, 3);
                     if ($tempPdf !== null) {
                         $usedMethod = 'Word COM';
                     }
@@ -1116,6 +2366,9 @@ foreach ($tempCandidates as $candidate) {
                 // tampilkan halaman auto-reload agar browser mencoba kembali secara otomatis sampai Word COM merespons.
                 if ($tempPdf === null && $hasComSupport && $comRetryCount < 3) {
                     @unlink($tempDocx);
+                    if ($layout_adjusted_docx) {
+                        @unlink($layout_adjusted_docx);
+                    }
                     $nextRetry = $comRetryCount + 1;
                     $protocol = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') ? 'https' : 'http';
                     $currentUrl = $protocol . '://' . $_SERVER['HTTP_HOST'] . $_SERVER['REQUEST_URI'];
@@ -1157,7 +2410,7 @@ foreach ($tempCandidates as $candidate) {
 
                 // Prioritas 2: LibreOffice (fallback jika Word COM tidak ada atau tidak dapat digunakan)
                 if ($tempPdf === null) {
-                    $tempPdf = konversi_docx_ke_pdf_libreoffice($tempDocx);
+                    $tempPdf = konversi_docx_ke_pdf_libreoffice($pdf_source_docx);
                     if ($tempPdf !== null) {
                         $usedMethod = 'LibreOffice';
                     }
@@ -1173,8 +2426,19 @@ foreach ($tempCandidates as $candidate) {
                         $tempPdf = $tempDir . DIRECTORY_SEPARATOR . 'spt_' . uniqid() . '.pdf';
                         $oldErrorReporting = error_reporting(E_ALL & ~E_DEPRECATED);
                         try {
+                            // Fallback Dompdf memakai DOCX asli + CSS dinamis yang
+                            // disuntikkan ke HTML tepat sebelum loadHtml().
                             $phpWord = IOFactory::load($tempDocx, 'Word2007');
                             $pdfWriter = IOFactory::createWriter($phpWord, 'PDF');
+                            if ($layout_active && $layout_settings !== null && method_exists($pdfWriter, 'getRenderer')) {
+                                $renderer = $pdfWriter->getRenderer();
+                                if ($renderer && method_exists($renderer, 'setEditCallback')) {
+                                    $layoutSettingsForCss = $layout_settings;
+                                    $renderer->setEditCallback(function ($html) use ($layoutSettingsForCss) {
+                                        return spt_layout_inject_html($html, $layoutSettingsForCss);
+                                    });
+                                }
+                            }
                             $pdfWriter->save($tempPdf);
                             if (file_exists($tempPdf) && filesize($tempPdf) >= 100) {
                                 $usedMethod = 'DomPDF';
@@ -1195,6 +2459,9 @@ foreach ($tempCandidates as $candidate) {
                 }
 
                 @unlink($tempDocx);
+                if ($layout_adjusted_docx) {
+                    @unlink($layout_adjusted_docx);
+                }
                 if (ob_get_length()) {
                     ob_clean();
                 }
@@ -1225,6 +2492,7 @@ foreach ($tempCandidates as $candidate) {
         @unlink($tempDocx);
     } catch (Exception $e) {
         if (file_exists($tempDocx)) @unlink($tempDocx);
+        if ($layout_adjusted_docx && file_exists($layout_adjusted_docx)) @unlink($layout_adjusted_docx);
         throw $e;
     }
 
