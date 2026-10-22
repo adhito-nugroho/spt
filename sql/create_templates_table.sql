@@ -9,6 +9,7 @@ CREATE TABLE IF NOT EXISTS templates (
     ukuran_file BIGINT NOT NULL,
     is_default TINYINT(1) DEFAULT 0,
     deskripsi TEXT,
+    layout_settings TEXT DEFAULT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     INDEX idx_kategori_tipe (kategori_template, tipe_surat, is_default),

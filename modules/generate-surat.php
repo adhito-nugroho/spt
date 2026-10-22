@@ -331,6 +331,60 @@ function spt_layout_query_params(array $settings)
     return $params;
 }
 
+/**
+ * Normalisasi setting layout yang tersimpan di database.
+ * Hanya key yang dikenal yang dipakai, nilainya di-clamp ke range slider.
+ */
+function spt_layout_normalize_stored_settings($raw)
+{
+    if (!is_array($raw)) {
+        return null;
+    }
+
+    $settings = [];
+    foreach (spt_layout_ranges() as $key => $range) {
+        if (isset($raw[$key]) && is_numeric($raw[$key])) {
+            $settings[$key] = spt_layout_round(
+                spt_layout_clamp($raw[$key], $range[0], $range[1]),
+                $range[2]
+            );
+        }
+    }
+    if (array_key_exists('lock_ttd', $raw)) {
+        $settings['lock_ttd'] = !empty($raw['lock_ttd']) ? 1 : 0;
+    }
+
+    return empty($settings) ? null : $settings;
+}
+
+/**
+ * Ambil pengaturan layout default yang tersimpan untuk sebuah template.
+ * Return null jika kolom belum ada atau template belum punya setting.
+ */
+function spt_layout_load_template_settings($pdo, $templateId)
+{
+    $templateId = (int)$templateId;
+    if ($templateId <= 0) {
+        return null;
+    }
+
+    try {
+        $stmt = $pdo->prepare("SELECT layout_settings FROM templates WHERE id = ? LIMIT 1");
+        $stmt->execute([$templateId]);
+        $row = $stmt->fetch();
+    } catch (PDOException $e) {
+        // Kolom layout_settings belum ada (database lama).
+        return null;
+    }
+
+    if (!$row || empty($row['layout_settings'])) {
+        return null;
+    }
+
+    $decoded = json_decode($row['layout_settings'], true);
+    return spt_layout_normalize_stored_settings($decoded);
+}
+
 function spt_layout_mm_to_twips($mm)
 {
     return (int)round(((float)$mm) * 1440 / 25.4);
@@ -1024,6 +1078,7 @@ try {
     $template_path = null;
     $template_found = false;
     $template_from_db = false;
+    $template_id_terpilih = null;
     $template_nama = null;
     $template_kategori_terpilih = null;
     $template_berlaku_mulai = null;
@@ -1124,6 +1179,7 @@ try {
                         if ($template_default['kategori_template'] == $kategori_template) {
                             $template_found = true;
                             $template_from_db = true;
+                            $template_id_terpilih = (int)$template_default['id'];
                             $template_nama = $template_default['nama'];
                             $template_kategori_terpilih = $template_default['kategori_template'];
                             $template_berlaku_mulai = $template_default['berlaku_mulai'] ?? null;
@@ -1168,6 +1224,7 @@ try {
                             if ($template_fallback['kategori_template'] == $kategori_template) {
                                 $template_found = true;
                                 $template_from_db = true;
+                                $template_id_terpilih = (int)$template_fallback['id'];
                                 $template_nama = $template_fallback['nama'];
                                 $template_kategori_terpilih = $template_fallback['kategori_template'];
                                 $template_berlaku_mulai = $template_fallback['berlaku_mulai'] ?? null;
@@ -1209,6 +1266,7 @@ try {
                             $zip->close();
                             $template_found = true;
                             $template_from_db = true;
+                            $template_id_terpilih = (int)$template_fallback_universal['id'];
                             $template_nama = $template_fallback_universal['nama'] . " (Fallback)";
                             $template_kategori_terpilih = $template_fallback_universal['kategori_template'];
                             $template_berlaku_mulai = $template_fallback_universal['berlaku_mulai'] ?? null;
@@ -1256,6 +1314,7 @@ try {
                             $zip->close();
                             $template_found = true;
                             $template_from_db = true;
+                            $template_id_terpilih = (int)$template_fallback2['id'];
                             $template_nama = $template_fallback2['nama'] . " (Fallback Umum)";
                             $template_kategori_terpilih = $template_fallback2['kategori_template'];
                             $template_berlaku_mulai = $template_fallback2['berlaku_mulai'] ?? null;
@@ -1734,15 +1793,26 @@ try {
     $format = isset($_GET['format']) ? strtolower(trim($_GET['format'])) : '';
     $inlinePdf = isset($_GET['inline']) && $_GET['inline'] === '1';
 
-    // Parameter layout dari panel adjuster (null = pakai template asli).
-    $layout_settings = spt_layout_request_settings();
+    // Parameter layout dari panel adjuster. Jika template sudah punya setting
+    // default tersimpan, setting itu otomatis dipakai saat halaman dibuka.
+    $layout_explicit_settings = spt_layout_request_settings();
     $layout_defaults = spt_layout_read_docx_defaults($template_path);
-    $layout_active = $layout_settings !== null;
-    if ($layout_active) {
-        // Lengkapi parameter yang tidak ada di URL dengan nilai default template.
-        $layout_settings = array_merge($layout_defaults, $layout_settings);
+    $layout_saved_settings = spt_layout_load_template_settings($pdo, $template_id_terpilih);
+    $layout_has_saved_default = $layout_saved_settings !== null;
+    if ($layout_has_saved_default) {
+        $layout_defaults = array_merge($layout_defaults, $layout_saved_settings);
     }
-    $layout_initial = $layout_active ? $layout_settings : $layout_defaults;
+
+    $layout_active = $layout_explicit_settings !== null || $layout_has_saved_default;
+    if ($layout_explicit_settings !== null) {
+        // Lengkapi parameter yang tidak ada di URL dengan nilai default template.
+        $layout_settings = array_merge($layout_defaults, $layout_explicit_settings);
+    } elseif ($layout_has_saved_default) {
+        $layout_settings = $layout_defaults;
+    } else {
+        $layout_settings = null;
+    }
+    $layout_initial = $layout_settings !== null ? $layout_settings : $layout_defaults;
 
     // Preview (tanpa format): tampilkan halaman dengan iframe PDF agar sama persis dengan file Word/PDF
     if ($format === '') {
@@ -1978,10 +2048,17 @@ try {
                                 </label>
                             </div>
 
-                            <button type="button" id="layoutApplyBtn" class="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-slate-800 hover:bg-slate-900 text-white text-sm font-medium rounded-lg transition-colors">
-                                <i class="bx bx-check-double text-base"></i>
-                                <span>Terapkan Perubahan</span>
-                            </button>
+                            <div class="space-y-2">
+                                <button type="button" id="layoutApplyBtn" class="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-slate-800 hover:bg-slate-900 text-white text-sm font-medium rounded-lg transition-colors">
+                                    <i class="bx bx-check-double text-base"></i>
+                                    <span>Terapkan Perubahan</span>
+                                </button>
+                                <button type="button" id="layoutSaveDefaultBtn" class="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-white hover:bg-indigo-50 text-indigo-700 border border-indigo-200 text-sm font-medium rounded-lg transition-colors">
+                                    <i class="bx bx-save text-base"></i>
+                                    <span>Simpan sebagai Default Template</span>
+                                </button>
+                                <p class="text-[11px] text-slate-400 text-center">Default template berlaku untuk semua surat yang memakai template ini.</p>
+                            </div>
                             <p class="text-[11px] text-slate-400 text-center" id="layoutStatus">Pengaturan default template</p>
                         </div>
                     </div>
@@ -2021,8 +2098,10 @@ try {
         <script>
         (function () {
             const SURAT_ID = <?= json_encode((string)$sid) ?>;
+            const TEMPLATE_ID = <?= json_encode((int)$template_id_terpilih) ?>;
             const DEFAULTS = <?= $layoutJsonDefaults ?>;
             const INITIAL = <?= $layoutJsonInitial ?>;
+            const HAS_SAVED_DEFAULT = <?= $layout_has_saved_default ? 'true' : 'false' ?>;
             const STORAGE_KEY = 'spt_layout_' + SURAT_ID;
             const STEP_CONFIG = {
                 margin_top: { min: 5, max: 40, step: 0.5, decimals: 1 },
@@ -2048,7 +2127,9 @@ try {
             });
 
             let state = Object.assign({}, DEFAULTS, { lock_ttd: 0 });
-            let active = false;
+            let templateDefaults = Object.assign({}, DEFAULTS);
+            let hasSavedDefault = HAS_SAVED_DEFAULT;
+            let active = HAS_SAVED_DEFAULT;
             let restoredFromStorage = false;
 
             function clamp(key, value) {
@@ -2101,12 +2182,29 @@ try {
                 updateStatus();
             }
 
+            function isDefaultState() {
+                const sameValues = KEYS.every(function (key) {
+                    return Math.abs(Number(state[key]) - Number(templateDefaults[key])) < 0.0001;
+                });
+                return sameValues && (!!state.lock_ttd === !!templateDefaults.lock_ttd);
+            }
+
             function updateStatus() {
                 if (!status) return;
-                status.textContent = active ? 'Kustom aktif — tersimpan otomatis' : 'Pengaturan default template';
-                status.className = active
-                    ? 'text-[11px] text-emerald-600 text-center font-medium'
-                    : 'text-[11px] text-slate-400 text-center';
+                if (!active) {
+                    status.textContent = 'Pengaturan default template';
+                    status.className = 'text-[11px] text-slate-400 text-center';
+                    return;
+                }
+                if (isDefaultState()) {
+                    status.textContent = hasSavedDefault
+                        ? 'Default template tersimpan'
+                        : 'Pengaturan default template';
+                    status.className = 'text-[11px] text-indigo-600 text-center font-medium';
+                    return;
+                }
+                status.textContent = 'Kustom aktif — belum disimpan sebagai default';
+                status.className = 'text-[11px] text-emerald-600 text-center font-medium';
             }
 
             function markActive() {
@@ -2226,6 +2324,66 @@ try {
                 });
             }
 
+            const saveDefaultBtn = document.getElementById('layoutSaveDefaultBtn');
+            if (saveDefaultBtn) {
+                saveDefaultBtn.addEventListener('click', async function () {
+                    if (!TEMPLATE_ID) {
+                        if (window.Swal) {
+                            Swal.fire({ icon: 'error', title: 'Template tidak diketahui', text: 'Pengaturan tidak dapat disimpan karena template tidak terhubung ke database.' });
+                        }
+                        return;
+                    }
+
+                    const originalHtml = saveDefaultBtn.innerHTML;
+                    saveDefaultBtn.disabled = true;
+                    saveDefaultBtn.innerHTML = '<span class="animate-spin rounded-full h-4 w-4 border-2 border-indigo-600 border-t-transparent"></span><span>Menyimpan…</span>';
+
+                    try {
+                        const payload = Object.assign({}, state, { lock_ttd: state.lock_ttd ? 1 : 0 });
+                        const response = await fetch('save-template-layout.php', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ template_id: TEMPLATE_ID, settings: payload })
+                        });
+                        const text = await response.text();
+                        let result;
+                        try {
+                            result = JSON.parse(text);
+                        } catch (parseError) {
+                            throw new Error('Respons server tidak valid.');
+                        }
+                        if (!response.ok || !result.success) {
+                            throw new Error(result.message || 'Gagal menyimpan pengaturan.');
+                        }
+
+                        templateDefaults = Object.assign({}, state, { lock_ttd: state.lock_ttd ? 1 : 0 });
+                        hasSavedDefault = true;
+                        active = true;
+                        applyLayout();
+                        updateStatus();
+
+                        if (window.Swal) {
+                            Swal.fire({
+                                icon: 'success',
+                                title: 'Tersimpan',
+                                text: 'Pengaturan ini sekarang menjadi default untuk template tersebut.',
+                                timer: 2200,
+                                showConfirmButton: false
+                            });
+                        }
+                    } catch (error) {
+                        if (window.Swal) {
+                            Swal.fire({ icon: 'error', title: 'Gagal menyimpan', text: error.message || 'Terjadi kesalahan.' });
+                        } else {
+                            alert(error.message || 'Gagal menyimpan pengaturan.');
+                        }
+                    } finally {
+                        saveDefaultBtn.disabled = false;
+                        saveDefaultBtn.innerHTML = originalHtml;
+                    }
+                });
+            }
+
             const autoFit = document.getElementById('layoutAutoFit');
             if (autoFit) {
                 autoFit.addEventListener('click', function () {
@@ -2250,8 +2408,8 @@ try {
             const resetBtn = document.getElementById('layoutReset');
             if (resetBtn) {
                 resetBtn.addEventListener('click', function () {
-                    active = false;
-                    state = Object.assign({}, DEFAULTS, { lock_ttd: 0 });
+                    active = hasSavedDefault;
+                    state = Object.assign({}, templateDefaults, { lock_ttd: templateDefaults.lock_ttd ? 1 : 0 });
                     try {
                         localStorage.removeItem(STORAGE_KEY);
                     } catch (e) {

@@ -6,3 +6,7 @@ ADD COLUMN kategori_template ENUM('1_pegawai', '2_pegawai', '3_pegawai', 'banyak
 ALTER TABLE templates 
 ADD INDEX idx_kategori (kategori_template, is_default);
 
+-- Pengaturan layout PDF default per template (JSON)
+ALTER TABLE templates
+ADD COLUMN layout_settings TEXT DEFAULT NULL;
+
