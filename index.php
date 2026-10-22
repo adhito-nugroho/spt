@@ -13,6 +13,7 @@ $tanggalDibuat = date('d') . ' ' . $bulanIndo[(int)date('n')] . ' ' . date('Y');
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Sistem Pengelolaan Surat Tugas CDK Bojonegoro</title>
+    <link rel="icon" type="image/svg+xml" href="assets/img/logo-jawa-timur.svg">
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://unpkg.com/boxicons@2.1.4/css/boxicons.min.css" rel="stylesheet">
     <script>
@@ -104,9 +105,8 @@ $tanggalDibuat = date('d') . ' ' . $bulanIndo[(int)date('n')] . ' ' . date('Y');
             <div class="container mx-auto px-5 pt-5 sm:px-6">
                 <nav class="flex items-center justify-between gap-4 rounded-2xl border border-white/70 bg-white/70 px-4 py-3 shadow-sm backdrop-blur-md sm:px-5">
                     <a href="index.php" class="group flex min-w-0 items-center gap-3">
-                        <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-600 to-blue-600 text-[11px] font-extrabold tracking-tight text-white shadow-lg shadow-indigo-200/70">
-                            CDK
-                        </span>
+                        <img src="assets/img/logo-jawa-timur.svg" alt="Lambang Provinsi Jawa Timur" class="h-11 w-auto shrink-0 object-contain drop-shadow-sm" decoding="async">
+
                         <span class="min-w-0">
                             <span class="block truncate text-sm font-bold text-slate-900 sm:text-base">CDK Wilayah Bojonegoro</span>
                             <span class="block truncate text-[10px] leading-tight text-slate-500 sm:text-xs">Dinas Kehutanan Provinsi Jawa Timur</span>
@@ -258,9 +258,8 @@ $tanggalDibuat = date('d') . ' ' . $bulanIndo[(int)date('n')] . ' ' . date('Y');
                     <!-- Kop surat -->
                     <div class="border-b-[3px] border-double border-slate-800 pb-3">
                         <div class="flex flex-col items-center justify-center gap-2 text-center sm:flex-row sm:gap-4">
-                            <span class="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-600 to-blue-600 text-sm font-extrabold tracking-tight text-white shadow-md shadow-indigo-200">
-                                CDK
-                            </span>
+                            <img src="assets/img/logo-jawa-timur.svg" alt="Lambang Provinsi Jawa Timur" class="h-16 w-auto shrink-0 object-contain" decoding="async">
+
                             <div class="leading-tight">
                                 <p class="text-[11px] font-semibold tracking-wide text-slate-700 sm:text-xs">PEMERINTAH PROVINSI JAWA TIMUR</p>
                                 <p class="text-base font-bold text-slate-900 sm:text-lg">DINAS KEHUTANAN</p>

@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Sistem Pengelolaan Surat Tugas</title>
+    <link rel="icon" type="image/svg+xml" href="../assets/img/logo-jawa-timur.svg">
     
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -56,7 +57,7 @@
         <aside class="w-64 bg-white border-r border-gray-200 hidden md:flex flex-col z-10">
             <div class="h-16 flex items-center px-6 border-b border-gray-100">
                 <a href="../" class="flex items-center gap-2 text-indigo-600 font-bold text-xl tracking-tight">
-                    <i class='bx bxs-file-doc text-2xl'></i>
+                    <img src="../assets/img/logo-jawa-timur.svg" alt="Lambang Provinsi Jawa Timur" class="h-9 w-auto shrink-0 object-contain" decoding="async">
                     <span>SIPENSURAT</span>
                 </a>
             </div>
