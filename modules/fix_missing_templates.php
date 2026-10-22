@@ -136,7 +136,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['action']) && $_POST['a
         
         echo "<p style='color: green; font-weight: bold;'>✓ Berhasil menambahkan {$added_count} template baru!</p>";
         echo "<p><a href='check_templates.php' style='background: #2196F3; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block;'>Cek Ulang Template</a></p>";
-        echo "<p><a href='template.php' style='background: #6366f1; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block;'>Kembali ke Halaman Template</a></p>";
+        echo "<p><a href='template.php' style='background: #15803d; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block;'>Kembali ke Halaman Template</a></p>";
         
     } catch (PDOException $e) {
         if ($pdo->inTransaction()) {

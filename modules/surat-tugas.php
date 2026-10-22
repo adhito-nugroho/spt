@@ -678,8 +678,8 @@ include '../includes/header.php';
         height: 40px !important;
     }
     .select2-container--default.select2-container--focus .select2-selection--single {
-        border-color: #6366f1 !important;
-        box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2) !important;
+        border-color: var(--color-primary) !important;
+        box-shadow: 0 0 0 2px var(--color-primary-ring) !important;
     }
     
     /* Drag and Drop & List Styling */
@@ -780,7 +780,7 @@ include '../includes/header.php';
         letter-spacing: -0.01em;
     }
     .detail-card {
-        border-left: 3px solid #4f46e5;
+        border-left: 3px solid var(--color-primary);
     }
 </style>
 

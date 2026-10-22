@@ -1,11 +1,5 @@
 <?php
 session_start();
-
-$bulanIndo = [
-    1 => 'Jan', 2 => 'Feb', 3 => 'Mar', 4 => 'Apr', 5 => 'Mei', 6 => 'Jun',
-    7 => 'Jul', 8 => 'Agu', 9 => 'Sep', 10 => 'Okt', 11 => 'Nov', 12 => 'Des',
-];
-$tanggalDibuat = date('d') . ' ' . $bulanIndo[(int)date('n')] . ' ' . date('Y');
 ?>
 <!DOCTYPE html>
 <html lang="id">
@@ -15,54 +9,9 @@ $tanggalDibuat = date('d') . ' ' . $bulanIndo[(int)date('n')] . ' ' . date('Y');
     <title>Sistem Pengelolaan Surat Tugas CDK Bojonegoro</title>
     <link rel="icon" type="image/svg+xml" href="assets/img/logo-jawa-timur.svg">
     <script src="https://cdn.tailwindcss.com"></script>
+    <?php include __DIR__ . '/includes/tailwind-theme.php'; ?>
     <link href="https://unpkg.com/boxicons@2.1.4/css/boxicons.min.css" rel="stylesheet">
-    <script>
-        tailwind.config = {
-            theme: {
-                extend: {
-                    colors: {
-                        primary: '#2c3e50',
-                        secondary: '#34495e',
-                    }
-                }
-            }
-        }
-    </script>
     <style>
-        .landing-card {
-            transform: rotate(1.5deg) translateZ(0);
-            backface-visibility: hidden;
-            -webkit-backface-visibility: hidden;
-            -webkit-font-smoothing: subpixel-antialiased;
-            -moz-osx-font-smoothing: grayscale;
-            box-shadow:
-                0 1px 2px rgba(15, 23, 42, 0.04),
-                0 12px 24px -10px rgba(79, 70, 229, 0.16),
-                0 32px 64px -24px rgba(15, 23, 42, 0.22);
-            transition:
-                transform 0.45s cubic-bezier(0.22, 1, 0.36, 1),
-                box-shadow 0.45s ease;
-            will-change: transform;
-        }
-
-        .landing-card:hover {
-            transform: rotate(0deg) translateY(-5px);
-            box-shadow:
-                0 2px 4px rgba(15, 23, 42, 0.04),
-                0 18px 32px -12px rgba(79, 70, 229, 0.22),
-                0 42px 80px -28px rgba(15, 23, 42, 0.26);
-        }
-
-        .card-glow {
-            background: radial-gradient(
-                circle at center,
-                rgba(99, 102, 241, 0.12) 0%,
-                rgba(139, 92, 246, 0.08) 42%,
-                rgba(99, 102, 241, 0) 72%
-            );
-            filter: blur(18px);
-        }
-
         @keyframes landing-modal-in {
             from {
                 opacity: 0;
@@ -79,14 +28,8 @@ $tanggalDibuat = date('d') . ' ' . $bulanIndo[(int)date('n')] . ' ' . date('Y');
         }
 
         @media (prefers-reduced-motion: reduce) {
-            .landing-card,
             #contohSuratModal:not(.hidden) .modal-panel {
-                transition: none;
                 animation: none;
-            }
-
-            .landing-card {
-                transform: none;
             }
         }
     </style>
@@ -95,9 +38,9 @@ $tanggalDibuat = date('d') . ' ' . $bulanIndo[(int)date('n')] . ' ' . date('Y');
     <div class="relative flex min-h-screen flex-col overflow-hidden">
         <!-- Background decoration -->
         <div class="pointer-events-none absolute inset-0 -z-10 overflow-hidden">
-            <div class="absolute -top-40 -right-40 h-96 w-96 rounded-full bg-indigo-100 opacity-60 blur-3xl"></div>
-            <div class="absolute -left-24 top-40 h-72 w-72 rounded-full bg-blue-100 opacity-50 blur-3xl"></div>
-            <div class="absolute bottom-0 left-1/2 h-64 w-64 -translate-x-1/2 rounded-full bg-violet-100 opacity-40 blur-3xl"></div>
+            <div class="absolute -top-40 -right-40 h-96 w-96 rounded-full bg-primary-light opacity-60 blur-3xl"></div>
+            <div class="absolute -left-24 top-40 h-72 w-72 rounded-full bg-primary-light opacity-50 blur-3xl"></div>
+            <div class="absolute bottom-0 left-1/2 h-64 w-64 -translate-x-1/2 rounded-full bg-primary-light opacity-40 blur-3xl"></div>
         </div>
 
         <!-- Top navbar -->
@@ -115,10 +58,10 @@ $tanggalDibuat = date('d') . ' ' . $bulanIndo[(int)date('n')] . ' ' . date('Y');
 
                     <div class="flex shrink-0 items-center gap-2 sm:gap-4">
                         <div class="hidden items-center gap-5 md:flex">
-                            <a href="modules/surat-tugas.php" class="text-sm font-medium text-slate-600 transition-colors hover:text-indigo-600">Panduan Penggunaan</a>
-                            <a href="modules/template.php" class="text-sm font-medium text-slate-600 transition-colors hover:text-indigo-600">Format Dishut</a>
+                            <a href="modules/surat-tugas.php" class="text-sm font-medium text-slate-600 transition-colors hover:text-primary">Panduan Penggunaan</a>
+                            <a href="modules/template.php" class="text-sm font-medium text-slate-600 transition-colors hover:text-primary">Format Dishut</a>
                         </div>
-                        <a href="modules/dashboard.php" class="inline-flex items-center gap-1.5 rounded-lg border border-indigo-200 bg-white/80 px-3 py-2 text-xs font-semibold text-indigo-700 transition-colors hover:border-indigo-300 hover:bg-indigo-50 sm:px-4 sm:text-sm">
+                        <a href="modules/dashboard.php" class="inline-flex items-center gap-1.5 rounded-lg border border-primary-border bg-white/80 px-3 py-2 text-xs font-semibold text-primary transition-colors hover:border-primary hover:bg-primary-light sm:px-4 sm:text-sm">
                             <i class='bx bx-log-in-circle text-base'></i>
                             <span class="hidden sm:inline">Login Pegawai</span>
                             <span class="sm:hidden">Login</span>
@@ -130,108 +73,33 @@ $tanggalDibuat = date('d') . ' ' . $bulanIndo[(int)date('n')] . ' ' . date('Y');
 
         <!-- Hero -->
         <main class="relative z-10 flex flex-1 items-center">
-            <div class="container mx-auto px-5 pb-12 pt-10 sm:px-6 lg:pb-16 lg:pt-12">
-                <div class="grid items-center gap-12 lg:grid-cols-2 lg:gap-16 xl:gap-20">
-                    <!-- Left content -->
-                    <div class="max-w-xl space-y-6 sm:space-y-7">
-                        <div class="inline-flex items-center gap-2 rounded-full bg-indigo-50 px-4 py-2 text-sm font-medium text-indigo-700">
-                            <span class="relative flex h-3 w-3">
-                                <span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-indigo-400 opacity-75"></span>
-                                <span class="relative inline-flex h-3 w-3 rounded-full bg-indigo-500"></span>
-                            </span>
-                            Sistem Persuratan CDK Bojonegoro
-                        </div>
-
-                        <h1 class="text-4xl font-bold leading-tight text-slate-900 sm:text-5xl xl:text-6xl">
-                            Sistem Pengelolaan <br>
-                            <span class="text-indigo-600">Surat Tugas</span>
+            <div class="container mx-auto px-5 pb-14 pt-12 sm:px-6 lg:pb-20 lg:pt-16">
+                <div class="grid items-center gap-12 lg:grid-cols-[minmax(0,1.15fr)_minmax(260px,0.85fr)] lg:gap-16">
+                    <div class="max-w-2xl">
+                        <h1 class="text-4xl font-bold leading-tight tracking-tight text-slate-900 sm:text-5xl xl:text-6xl">
+                            <span class="block">Sistem Pengelolaan</span>
+                            <span class="block">Surat Tugas</span>
                         </h1>
 
-                        <p class="max-w-xl text-base leading-relaxed text-slate-600 sm:text-lg">
-                            Kelola surat tugas dengan mudah, cepat, dan efisien. Generate surat tugas otomatis dengan template yang sudah ditentukan, hemat waktu dan tenaga.
+                        <p class="mt-6 max-w-2xl text-base leading-relaxed text-slate-600 sm:text-lg">
+                            Aplikasi internal untuk penerbitan surat tugas dan pengelolaan buku nomor pegawai CDK Wilayah Bojonegoro, Dinas Kehutanan Provinsi Jawa Timur.
                         </p>
 
-                        <div class="flex max-w-xl flex-col items-stretch gap-3 sm:flex-row sm:items-center sm:gap-4">
-                            <a href="modules/dashboard.php" class="inline-flex items-center justify-center gap-2 rounded-xl bg-indigo-600 px-6 py-3.5 text-base font-semibold text-white shadow-lg transition-all hover:-translate-y-1 hover:bg-indigo-700 hover:shadow-indigo-200 sm:px-8 sm:py-4 sm:text-lg">
+                        <div class="mt-8 flex max-w-xl flex-col items-stretch gap-3 sm:flex-row sm:items-center sm:gap-4">
+                            <a href="modules/dashboard.php" class="inline-flex items-center justify-center gap-2 rounded-lg bg-primary px-6 py-3.5 text-base font-semibold text-white shadow-sm transition-colors hover:bg-primary-dark sm:px-8 sm:py-4 sm:text-lg">
                                 Masuk ke Dashboard
                                 <i class='bx bx-right-arrow-alt text-2xl'></i>
                             </a>
-                            <button type="button" id="lihatContohBtn" aria-haspopup="dialog" aria-controls="contohSuratModal" class="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-indigo-600 px-6 py-3.5 text-base font-semibold text-indigo-600 transition-all hover:bg-indigo-50 sm:px-8 sm:py-4 sm:text-lg">
+                            <button type="button" id="lihatContohBtn" aria-haspopup="dialog" aria-controls="contohSuratModal" class="inline-flex items-center justify-center gap-2 rounded-lg border border-primary px-6 py-3.5 text-base font-semibold text-primary transition-colors hover:bg-primary-light sm:px-8 sm:py-4 sm:text-lg">
                                 <i class='bx bx-file text-xl'></i>
                                 Lihat Contoh Surat
                             </button>
                         </div>
-
-                        <div class="w-full max-w-xl border-t border-slate-200 pt-6">
-                            <div class="flex flex-wrap items-center gap-x-6 gap-y-3 text-slate-500">
-                                <div class="flex items-center gap-2">
-                                    <i class='bx bx-check-circle text-xl text-indigo-500'></i>
-                                    <span class="text-sm">500+ Surat Diproses</span>
-                                </div>
-                                <div class="flex items-center gap-2">
-                                    <i class='bx bx-check-circle text-xl text-indigo-500'></i>
-                                    <span class="text-sm">Format Sesuai Ketentuan Dishut Jatim</span>
-                                </div>
-                            </div>
-                        </div>
                     </div>
 
-                    <!-- Right mockup -->
-                    <div class="relative mx-auto flex w-full max-w-md justify-center lg:max-w-none">
-                        <!-- Decorative document watermark -->
-                        <div class="pointer-events-none absolute inset-0 -z-10 flex items-center justify-center text-indigo-600 opacity-[0.05]" style="transform: rotate(6deg);">
-                            <i class='bx bxs-file-doc' style="font-size: 280px;"></i>
-                        </div>
-
-                        <!-- Soft indigo glow behind the card -->
-                        <div class="card-glow pointer-events-none absolute -bottom-12 -left-10 h-56 w-56 rounded-full"></div>
-
-                        <!-- Card surat tugas -->
-                        <div class="landing-card relative z-10 w-full max-w-sm rounded-2xl border border-slate-100 bg-white p-6 sm:p-8">
-                            <!-- Header card -->
-                            <div class="mb-6 flex items-center gap-4 border-b border-slate-100 pb-4">
-                                <div class="flex h-12 w-12 items-center justify-center rounded-full bg-indigo-100 text-indigo-600">
-                                    <i class='bx bxs-file-doc text-2xl'></i>
-                                </div>
-                                <div>
-                                    <h3 class="font-bold text-slate-800">Surat Tugas Baru</h3>
-                                    <p class="text-xs text-slate-500">Dibuat pada <?= htmlspecialchars($tanggalDibuat) ?></p>
-                                </div>
-                            </div>
-
-                            <!-- Mock field data surat tugas -->
-                            <div class="space-y-4">
-                                <div>
-                                    <p class="mb-0.5 text-xs uppercase tracking-wide text-slate-400">Nomor Surat</p>
-                                    <p class="text-sm font-medium text-slate-700">094/ST/CDK-BJN/X/2026</p>
-                                </div>
-                                <div>
-                                    <p class="mb-0.5 text-xs uppercase tracking-wide text-slate-400">Nama Pegawai</p>
-                                    <p class="text-sm font-medium text-slate-700">Purwo Yulianto, S.P.</p>
-                                </div>
-                                <div>
-                                    <p class="mb-0.5 text-xs uppercase tracking-wide text-slate-400">Tujuan</p>
-                                    <p class="text-sm font-medium text-slate-700">Penyuluhan kehutanan di Kec. Ngraho</p>
-                                </div>
-                                <div>
-                                    <p class="mb-0.5 text-xs uppercase tracking-wide text-slate-400">Tanggal Pelaksanaan</p>
-                                    <p class="text-sm font-medium text-slate-700">25 – 27 Oktober 2026</p>
-                                </div>
-                            </div>
-
-                            <!-- Tombol aksi -->
-                            <div class="mt-6 flex justify-end">
-                                <a href="modules/dashboard.php" class="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-indigo-700">
-                                    <i class='bx bx-printer'></i>
-                                    Cetak Surat
-                                </a>
-                            </div>
-                        </div>
-
-                        <!-- Floating folder badge -->
-                        <div class="absolute -bottom-5 -left-3 z-20 hidden h-16 w-16 items-center justify-center rounded-2xl border border-indigo-100 bg-white text-indigo-500 shadow-lg shadow-indigo-100/70 sm:flex">
-                            <i class='bx bxs-folder-open text-3xl'></i>
-                        </div>
+                    <div class="relative hidden items-center justify-center lg:flex" aria-hidden="true">
+                        <div class="absolute h-72 w-72 rounded-full bg-primary-light opacity-80 blur-3xl"></div>
+                        <img src="assets/img/logo-jawa-timur.svg" alt="" class="relative h-64 w-auto object-contain drop-shadow-lg xl:h-72" loading="eager" decoding="async">
                     </div>
                 </div>
             </div>
@@ -334,7 +202,7 @@ $tanggalDibuat = date('d') . ' ' . $bulanIndo[(int)date('n')] . ' ' . date('Y');
                 <button type="button" class="inline-flex items-center justify-center rounded-lg border border-slate-300 bg-white px-5 py-2.5 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50" data-modal-close>
                     Tutup
                 </button>
-                <a href="modules/dashboard.php" class="inline-flex items-center justify-center gap-2 rounded-lg bg-indigo-600 px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-indigo-700">
+                <a href="modules/dashboard.php" class="inline-flex items-center justify-center gap-2 rounded-lg bg-primary px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-primary-dark">
                     Masuk untuk Buat Surat
                     <i class='bx bx-right-arrow-alt text-lg'></i>
                 </a>

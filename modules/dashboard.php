@@ -247,11 +247,12 @@ foreach ($chart_data as $cd) {
 <script>
     document.addEventListener('DOMContentLoaded', function () {
         const ctx = document.getElementById('suratChart').getContext('2d');
+        const theme = window.SIPENSURAT_THEME || { primary: '#15803d', primaryDark: '#166534', primaryRgb: '21, 128, 61' };
         
         // Gradient fill
         const gradient = ctx.createLinearGradient(0, 0, 0, 300);
-        gradient.addColorStop(0, 'rgba(99, 102, 241, 0.18)');
-        gradient.addColorStop(1, 'rgba(99, 102, 241, 0.0)');
+        gradient.addColorStop(0, `rgba(${theme.primaryRgb}, 0.18)`);
+        gradient.addColorStop(1, `rgba(${theme.primaryRgb}, 0.0)`);
 
         const chartData = <?php echo json_encode(array_column($chart_data, 'total')); ?>;
         const chartLabels = <?php echo json_encode($chart_labels); ?>;
@@ -265,15 +266,15 @@ foreach ($chart_data as $cd) {
                 datasets: [{
                     label: 'Jumlah Surat',
                     data: chartData,
-                    borderColor: '#6366f1',
+                    borderColor: theme.primary,
                     backgroundColor: gradient,
                     borderWidth: 2,
-                    pointBackgroundColor: '#6366f1',
+                    pointBackgroundColor: theme.primary,
                     pointBorderColor: '#ffffff',
                     pointBorderWidth: 2,
                     pointRadius: 3,
                     pointHoverRadius: 5,
-                    pointHoverBackgroundColor: '#4f46e5',
+                    pointHoverBackgroundColor: theme.primaryDark,
                     pointHoverBorderColor: '#ffffff',
                     pointHoverBorderWidth: 2,
                     fill: true,

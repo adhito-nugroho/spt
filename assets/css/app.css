@@ -24,9 +24,9 @@
     width: 3px;
     border-radius: 3px 0 0 3px;
 }
-.stat-card.blue::before   { background: #4f46e5; }
-.stat-card.indigo::before { background: #6366f1; }
-.stat-card.violet::before { background: #8b5cf6; }
+.stat-card.blue::before   { background: var(--color-primary); }
+.stat-card.indigo::before { background: var(--color-primary); }
+.stat-card.violet::before { background: var(--color-primary); }
 .stat-card.teal::before   { background: #0d9488; }
 .stat-card.emerald::before{ background: #059669; }
 
@@ -37,9 +37,9 @@
     font-size: 1.2rem;
     flex-shrink: 0;
 }
-.stat-icon.blue   { background:#eef2ff; color:#4f46e5; }
-.stat-icon.indigo { background:#ede9fe; color:#6366f1; }
-.stat-icon.violet { background:#f5f3ff; color:#8b5cf6; }
+.stat-icon.blue   { background:var(--color-primary-soft); color:var(--color-primary); }
+.stat-icon.indigo { background:var(--color-primary-soft); color:var(--color-primary); }
+.stat-icon.violet { background:var(--color-primary-soft); color:var(--color-primary); }
 .stat-icon.teal   { background:#f0fdfa; color:#0d9488; }
 .stat-icon.emerald{ background:#ecfdf5; color:#059669; }
 
@@ -57,11 +57,11 @@
 }
 .sidebar-link:hover {
     background: #f9fafb;
-    color: #4f46e5;
+    color: var(--color-primary);
 }
 .sidebar-link.active {
-    background: #eef2ff;
-    color: #4f46e5;
+    background: var(--color-primary-light);
+    color: var(--color-primary);
     font-weight: 600;
 }
 .sidebar-link.active::before {
@@ -69,7 +69,7 @@
     position: absolute;
     left: -12px; top: 6px; bottom: 6px;
     width: 3px;
-    background: #4f46e5;
+    background: var(--color-primary);
     border-radius: 0 3px 3px 0;
 }
 
@@ -111,12 +111,12 @@
 }
 .badge-green   { background:#dcfce7; color:#166534; }
 .badge-blue    { background:#dbeafe; color:#1d4ed8; }
-.badge-indigo  { background:#e0e7ff; color:#3730a3; }
+.badge-indigo  { background:var(--color-primary-soft); color:var(--color-primary-dark); }
 .badge-gray    { background:#f3f4f6; color:#4b5563; }
 .badge-emerald { background:#d1fae5; color:#065f46; }
 .badge-amber   { background:#fef3c7; color:#92400e; }
 .badge-red     { background:#fee2e2; color:#991b1b; }
-.badge-violet  { background:#f5f3ff; color:#5b21b6; }
+.badge-violet  { background:var(--color-primary-soft); color:var(--color-primary-dark); }
 
 /* --- Tombol aksi outline --- */
 .btn-action {
@@ -133,8 +133,8 @@
     text-decoration: none;
 }
 .btn-action:hover { background: #f9fafb; border-color: #9ca3af; }
-.btn-action.primary { border-color: #c7d2fe; color: #4f46e5; }
-.btn-action.primary:hover { background: #eef2ff; }
+.btn-action.primary { border-color: var(--color-primary-border); color: var(--color-primary); }
+.btn-action.primary:hover { background: var(--color-primary-light); }
 .btn-action.warning { border-color: #fcd34d; color: #d97706; }
 .btn-action.warning:hover { background: #fffbeb; }
 .btn-action.danger  { border-color: #fca5a5; color: #dc2626; }
@@ -169,7 +169,7 @@
     font-size:0.7rem; font-weight:700; flex-shrink:0;
 }
 .avatar-0 { background:#dbeafe; color:#1d4ed8; }
-.avatar-1 { background:#ede9fe; color:#6d28d9; }
+.avatar-1 { background:var(--color-primary-soft); color:var(--color-primary-dark); }
 .avatar-2 { background:#dcfce7; color:#166534; }
 .avatar-3 { background:#fef3c7; color:#92400e; }
 .avatar-4 { background:#fce7f3; color:#9d174d; }
@@ -187,8 +187,8 @@
     transition: border-color .15s, box-shadow .15s;
 }
 .input-premium:focus {
-    border-color: #6366f1;
-    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.12);
+    border-color: var(--color-primary);
+    box-shadow: 0 0 0 3px var(--color-primary-ring);
 }
 
 /* --- Pagination --- */
@@ -206,7 +206,7 @@
     transition: background .1s, border-color .1s;
 }
 .pagination-btn:hover { background: #f9fafb; border-color: #d1d5db; }
-.pagination-btn.active { background: #4f46e5; color: #ffffff; border-color: #4f46e5; }
+.pagination-btn.active { background: var(--color-primary); color: #ffffff; border-color: var(--color-primary); }
 .pagination-btn:disabled, .pagination-btn.disabled { opacity: 0.4; cursor: not-allowed; }
 
 /* --- Empty state --- */

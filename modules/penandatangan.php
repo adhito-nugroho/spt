@@ -982,7 +982,7 @@ $all_pegawai = $stmt_pegawai->fetchAll();
                 text: `Apakah Anda yakin ingin ${actionText} penanda tangan ini?`,
                 icon: 'question',
                 showCancelButton: true,
-                confirmButtonColor: '#6366f1',
+                confirmButtonColor: window.SIPENSURAT_THEME.primary,
                 cancelButtonColor: '#64748b',
                 confirmButtonText: 'Ya',
                 cancelButtonText: 'Batal'
@@ -1058,7 +1058,7 @@ $all_pegawai = $stmt_pegawai->fetchAll();
                     icon: 'warning',
                     title: 'Format Tidak Valid',
                     text: 'Hanya file PNG yang diperbolehkan untuk tanda tangan.',
-                    confirmButtonColor: '#6366f1'
+                    confirmButtonColor: window.SIPENSURAT_THEME.primary
                 });
                 input.value = '';
                 preview.classList.add('hidden');
@@ -1071,7 +1071,7 @@ $all_pegawai = $stmt_pegawai->fetchAll();
                     icon: 'warning',
                     title: 'Ukuran File Terlalu Besar',
                     text: 'Ukuran file maksimal 2MB.',
-                    confirmButtonColor: '#6366f1'
+                    confirmButtonColor: window.SIPENSURAT_THEME.primary
                 });
                 input.value = '';
                 preview.classList.add('hidden');

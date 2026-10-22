@@ -330,7 +330,7 @@ if ($export === 'pdf') {
                 page-break-inside: avoid;
             }
             .employee-header {
-                background-color: #4f46e5;
+                background-color: #15803d;
                 color: #ffffff;
                 padding: 10px;
             }
@@ -364,8 +364,8 @@ if ($export === 'pdf') {
             .text-center { text-align: center; }
             .text-nowrap { white-space: nowrap; }
             .badge {
-                background-color: #e0e7ff;
-                color: #3730a3;
+                background-color: #dcfce7;
+                color: #166534;
                 padding: 2px 6px;
                 border-radius: 4px;
                 font-size: 9px;

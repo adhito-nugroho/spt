@@ -828,7 +828,7 @@ $cutoff_papbd_label = $cutoff_papbd ? date('d/m/Y', strtotime($cutoff_papbd)) : 
                 text: 'Template ini akan digunakan sebagai template default untuk generate surat',
                 icon: 'question',
                 showCancelButton: true,
-                confirmButtonColor: '#6366f1',
+                confirmButtonColor: window.SIPENSURAT_THEME.primary,
                 cancelButtonColor: '#6b7280',
                 confirmButtonText: 'Ya, Set Default',
                 cancelButtonText: 'Batal'

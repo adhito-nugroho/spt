@@ -1,0 +1,395 @@
+<?php
+session_start();
+
+$bulanIndo = [
+    1 => 'Jan', 2 => 'Feb', 3 => 'Mar', 4 => 'Apr', 5 => 'Mei', 6 => 'Jun',
+    7 => 'Jul', 8 => 'Agu', 9 => 'Sep', 10 => 'Okt', 11 => 'Nov', 12 => 'Des',
+];
+$tanggalDibuat = date('d') . ' ' . $bulanIndo[(int)date('n')] . ' ' . date('Y');
+?>
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sistem Pengelolaan Surat Tugas CDK Bojonegoro</title>
+    <link rel="icon" type="image/svg+xml" href="assets/img/logo-jawa-timur.svg">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <?php include __DIR__ . '/includes/tailwind-theme.php'; ?>
+    <link href="https://unpkg.com/boxicons@2.1.4/css/boxicons.min.css" rel="stylesheet">
+    <style>
+        .landing-card {
+            transform: rotate(1.5deg) translateZ(0);
+            backface-visibility: hidden;
+            -webkit-backface-visibility: hidden;
+            -webkit-font-smoothing: subpixel-antialiased;
+            -moz-osx-font-smoothing: grayscale;
+            box-shadow:
+                0 1px 2px rgba(15, 23, 42, 0.04),
+                0 12px 24px -10px rgba(var(--color-primary-rgb), 0.16),
+                0 32px 64px -24px rgba(15, 23, 42, 0.22);
+            transition:
+                transform 0.45s cubic-bezier(0.22, 1, 0.36, 1),
+                box-shadow 0.45s ease;
+            will-change: transform;
+        }
+
+        .landing-card:hover {
+            transform: rotate(0deg) translateY(-5px);
+            box-shadow:
+                0 2px 4px rgba(15, 23, 42, 0.04),
+                0 18px 32px -12px rgba(var(--color-primary-rgb), 0.22),
+                0 42px 80px -28px rgba(15, 23, 42, 0.26);
+        }
+
+        .card-glow {
+            background: radial-gradient(
+                circle at center,
+                rgba(var(--color-primary-rgb), 0.12) 0%,
+                rgba(var(--color-primary-rgb), 0.07) 42%,
+                rgba(var(--color-primary-rgb), 0) 72%
+            );
+            filter: blur(18px);
+        }
+
+        @keyframes landing-modal-in {
+            from {
+                opacity: 0;
+                transform: translateY(14px) scale(0.985);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0) scale(1);
+            }
+        }
+
+        #contohSuratModal:not(.hidden) .modal-panel {
+            animation: landing-modal-in 0.22s ease-out both;
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            .landing-card,
+            #contohSuratModal:not(.hidden) .modal-panel {
+                transition: none;
+                animation: none;
+            }
+
+            .landing-card {
+                transform: none;
+            }
+        }
+    </style>
+</head>
+<body class="bg-slate-50 font-sans text-slate-800 antialiased">
+    <div class="relative flex min-h-screen flex-col overflow-hidden">
+        <!-- Background decoration -->
+        <div class="pointer-events-none absolute inset-0 -z-10 overflow-hidden">
+            <div class="absolute -top-40 -right-40 h-96 w-96 rounded-full bg-indigo-100 opacity-60 blur-3xl"></div>
+            <div class="absolute -left-24 top-40 h-72 w-72 rounded-full bg-primary-light opacity-50 blur-3xl"></div>
+            <div class="absolute bottom-0 left-1/2 h-64 w-64 -translate-x-1/2 rounded-full bg-primary-light opacity-40 blur-3xl"></div>
+        </div>
+
+        <!-- Top navbar -->
+        <header class="relative z-20">
+            <div class="container mx-auto px-5 pt-5 sm:px-6">
+                <nav class="flex items-center justify-between gap-4 rounded-2xl border border-white/70 bg-white/70 px-4 py-3 shadow-sm backdrop-blur-md sm:px-5">
+                    <a href="index.php" class="group flex min-w-0 items-center gap-3">
+                        <img src="assets/img/logo-jawa-timur.svg" alt="Lambang Provinsi Jawa Timur" class="h-11 w-auto shrink-0 object-contain drop-shadow-sm" decoding="async">
+
+                        <span class="min-w-0">
+                            <span class="block truncate text-sm font-bold text-slate-900 sm:text-base">CDK Wilayah Bojonegoro</span>
+                            <span class="block truncate text-[10px] leading-tight text-slate-500 sm:text-xs">Dinas Kehutanan Provinsi Jawa Timur</span>
+                        </span>
+                    </a>
+
+                    <div class="flex shrink-0 items-center gap-2 sm:gap-4">
+                        <div class="hidden items-center gap-5 md:flex">
+                            <a href="modules/surat-tugas.php" class="text-sm font-medium text-slate-600 transition-colors hover:text-indigo-600">Panduan Penggunaan</a>
+                            <a href="modules/template.php" class="text-sm font-medium text-slate-600 transition-colors hover:text-indigo-600">Format Dishut</a>
+                        </div>
+                        <a href="modules/dashboard.php" class="inline-flex items-center gap-1.5 rounded-lg border border-indigo-200 bg-white/80 px-3 py-2 text-xs font-semibold text-indigo-700 transition-colors hover:border-indigo-300 hover:bg-indigo-50 sm:px-4 sm:text-sm">
+                            <i class='bx bx-log-in-circle text-base'></i>
+                            <span class="hidden sm:inline">Login Pegawai</span>
+                            <span class="sm:hidden">Login</span>
+                        </a>
+                    </div>
+                </nav>
+            </div>
+        </header>
+
+        <!-- Hero -->
+        <main class="relative z-10 flex flex-1 items-center">
+            <div class="container mx-auto px-5 pb-12 pt-10 sm:px-6 lg:pb-16 lg:pt-12">
+                <div class="grid items-center gap-12 lg:grid-cols-2 lg:gap-16 xl:gap-20">
+                    <!-- Left content -->
+                    <div class="max-w-xl space-y-6 sm:space-y-7">
+                        <div class="inline-flex items-center gap-2 rounded-full bg-indigo-50 px-4 py-2 text-sm font-medium text-indigo-700">
+                            <span class="relative flex h-3 w-3">
+                                <span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-indigo-400 opacity-75"></span>
+                                <span class="relative inline-flex h-3 w-3 rounded-full bg-indigo-500"></span>
+                            </span>
+                            Sistem Persuratan CDK Bojonegoro
+                        </div>
+
+                        <h1 class="text-4xl font-bold leading-tight text-slate-900 sm:text-5xl xl:text-6xl">
+                            Sistem Pengelolaan <br>
+                            <span class="text-indigo-600">Surat Tugas</span>
+                        </h1>
+
+                        <p class="max-w-xl text-base leading-relaxed text-slate-600 sm:text-lg">
+                            Kelola surat tugas dengan mudah, cepat, dan efisien. Generate surat tugas otomatis dengan template yang sudah ditentukan, hemat waktu dan tenaga.
+                        </p>
+
+                        <div class="flex max-w-xl flex-col items-stretch gap-3 sm:flex-row sm:items-center sm:gap-4">
+                            <a href="modules/dashboard.php" class="inline-flex items-center justify-center gap-2 rounded-xl bg-indigo-600 px-6 py-3.5 text-base font-semibold text-white shadow-lg transition-all hover:-translate-y-1 hover:bg-indigo-700 hover:shadow-indigo-200 sm:px-8 sm:py-4 sm:text-lg">
+                                Masuk ke Dashboard
+                                <i class='bx bx-right-arrow-alt text-2xl'></i>
+                            </a>
+                            <button type="button" id="lihatContohBtn" aria-haspopup="dialog" aria-controls="contohSuratModal" class="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-indigo-600 px-6 py-3.5 text-base font-semibold text-indigo-600 transition-all hover:bg-indigo-50 sm:px-8 sm:py-4 sm:text-lg">
+                                <i class='bx bx-file text-xl'></i>
+                                Lihat Contoh Surat
+                            </button>
+                        </div>
+
+                        <div class="w-full max-w-xl border-t border-slate-200 pt-6">
+                            <div class="flex flex-wrap items-center gap-x-6 gap-y-3 text-slate-500">
+                                <div class="flex items-center gap-2">
+                                    <i class='bx bx-check-circle text-xl text-indigo-500'></i>
+                                    <span class="text-sm">500+ Surat Diproses</span>
+                                </div>
+                                <div class="flex items-center gap-2">
+                                    <i class='bx bx-check-circle text-xl text-indigo-500'></i>
+                                    <span class="text-sm">Format Sesuai Ketentuan Dishut Jatim</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Right mockup -->
+                    <div class="relative mx-auto flex w-full max-w-md justify-center lg:max-w-none">
+                        <!-- Decorative document watermark -->
+                        <div class="pointer-events-none absolute inset-0 -z-10 flex items-center justify-center text-indigo-600 opacity-[0.05]" style="transform: rotate(6deg);">
+                            <i class='bx bxs-file-doc' style="font-size: 280px;"></i>
+                        </div>
+
+                        <!-- Soft indigo glow behind the card -->
+                        <div class="card-glow pointer-events-none absolute -bottom-12 -left-10 h-56 w-56 rounded-full"></div>
+
+                        <!-- Card surat tugas -->
+                        <div class="landing-card relative z-10 w-full max-w-sm rounded-2xl border border-slate-100 bg-white p-6 sm:p-8">
+                            <!-- Header card -->
+                            <div class="mb-6 flex items-center gap-4 border-b border-slate-100 pb-4">
+                                <div class="flex h-12 w-12 items-center justify-center rounded-full bg-indigo-100 text-indigo-600">
+                                    <i class='bx bxs-file-doc text-2xl'></i>
+                                </div>
+                                <div>
+                                    <h3 class="font-bold text-slate-800">Surat Tugas Baru</h3>
+                                    <p class="text-xs text-slate-500">Dibuat pada <?= htmlspecialchars($tanggalDibuat) ?></p>
+                                </div>
+                            </div>
+
+                            <!-- Mock field data surat tugas -->
+                            <div class="space-y-4">
+                                <div>
+                                    <p class="mb-0.5 text-xs uppercase tracking-wide text-slate-400">Nomor Surat</p>
+                                    <p class="text-sm font-medium text-slate-700">094/ST/CDK-BJN/X/2026</p>
+                                </div>
+                                <div>
+                                    <p class="mb-0.5 text-xs uppercase tracking-wide text-slate-400">Nama Pegawai</p>
+                                    <p class="text-sm font-medium text-slate-700">Purwo Yulianto, S.P.</p>
+                                </div>
+                                <div>
+                                    <p class="mb-0.5 text-xs uppercase tracking-wide text-slate-400">Tujuan</p>
+                                    <p class="text-sm font-medium text-slate-700">Penyuluhan kehutanan di Kec. Ngraho</p>
+                                </div>
+                                <div>
+                                    <p class="mb-0.5 text-xs uppercase tracking-wide text-slate-400">Tanggal Pelaksanaan</p>
+                                    <p class="text-sm font-medium text-slate-700">25 – 27 Oktober 2026</p>
+                                </div>
+                            </div>
+
+                            <!-- Tombol aksi -->
+                            <div class="mt-6 flex justify-end">
+                                <a href="modules/dashboard.php" class="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-indigo-700">
+                                    <i class='bx bx-printer'></i>
+                                    Cetak Surat
+                                </a>
+                            </div>
+                        </div>
+
+                        <!-- Floating folder badge -->
+                        <div class="absolute -bottom-5 -left-3 z-20 hidden h-16 w-16 items-center justify-center rounded-2xl border border-indigo-100 bg-white text-indigo-500 shadow-lg shadow-indigo-100/70 sm:flex">
+                            <i class='bx bxs-folder-open text-3xl'></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Modal contoh surat -->
+    <div id="contohSuratModal" class="fixed inset-0 z-50 hidden items-center justify-center p-3 sm:p-6" role="dialog" aria-modal="true" aria-labelledby="contohSuratTitle">
+        <button type="button" tabindex="-1" class="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" data-modal-close aria-label="Tutup contoh surat"></button>
+
+        <div class="modal-panel relative z-10 max-h-[92vh] w-full max-w-4xl overflow-y-auto rounded-2xl bg-slate-100 shadow-2xl ring-1 ring-white/20">
+            <div class="sticky top-0 z-20 flex items-center justify-between gap-3 border-b border-slate-200 bg-white/95 px-4 py-3 backdrop-blur sm:px-6">
+                <div>
+                    <h2 id="contohSuratTitle" class="text-base font-bold text-slate-900 sm:text-lg">Contoh Surat Tugas</h2>
+                    <p class="text-xs text-slate-500">Pratinjau format resmi Surat Tugas CDK Wilayah Bojonegoro.</p>
+                </div>
+                <button type="button" class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800" data-modal-close aria-label="Tutup">
+                    <i class='bx bx-x text-2xl'></i>
+                </button>
+            </div>
+
+            <div class="p-3 sm:p-6">
+                <article class="mx-auto max-w-3xl bg-white px-5 py-6 shadow-sm ring-1 ring-slate-200 sm:px-10 sm:py-10">
+                    <!-- Kop surat -->
+                    <div class="border-b-[3px] border-double border-slate-800 pb-3">
+                        <div class="flex flex-col items-center justify-center gap-2 text-center sm:flex-row sm:gap-4">
+                            <img src="assets/img/logo-jawa-timur.svg" alt="Lambang Provinsi Jawa Timur" class="h-16 w-auto shrink-0 object-contain" decoding="async">
+
+                            <div class="leading-tight">
+                                <p class="text-[11px] font-semibold tracking-wide text-slate-700 sm:text-xs">PEMERINTAH PROVINSI JAWA TIMUR</p>
+                                <p class="text-base font-bold text-slate-900 sm:text-lg">DINAS KEHUTANAN</p>
+                                <p class="text-sm font-bold text-slate-800 sm:text-base">UPTD CDK WILAYAH BOJONEGORO</p>
+                                <p class="text-[10px] text-slate-500 sm:text-xs">Bojonegoro, Jawa Timur</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Judul surat -->
+                    <div class="mt-5 text-center sm:mt-6">
+                        <p class="text-base font-bold tracking-[0.2em] text-slate-900 underline underline-offset-4 sm:text-lg">SURAT TUGAS</p>
+                        <p class="mt-1 text-xs text-slate-600 sm:text-sm">Nomor: 094/ST/CDK-BJN/X/2026</p>
+                    </div>
+
+                    <!-- Isi surat -->
+                    <div class="mt-5 space-y-3 text-sm leading-relaxed text-slate-700">
+                        <p>
+                            Kepala UPTD CDK Wilayah Bojonegoro Dinas Kehutanan Provinsi Jawa Timur, berdasarkan kebutuhan pelaksanaan tugas kedinasan, dengan ini menugaskan kepada:
+                        </p>
+
+                        <div class="overflow-x-auto">
+                            <table class="w-full min-w-[420px] text-left text-xs sm:text-sm">
+                                <tbody class="divide-y divide-slate-100">
+                                    <tr>
+                                        <th class="w-36 py-2 pr-3 align-top font-semibold text-slate-600">Nama</th>
+                                        <td class="py-2 font-medium text-slate-800">Purwo Yulianto, S.P.</td>
+                                    </tr>
+                                    <tr>
+                                        <th class="py-2 pr-3 align-top font-semibold text-slate-600">NIP</th>
+                                        <td class="py-2 text-slate-700">19870512 201001 1 002</td>
+                                    </tr>
+                                    <tr>
+                                        <th class="py-2 pr-3 align-top font-semibold text-slate-600">Jabatan</th>
+                                        <td class="py-2 text-slate-700">Penyuluh Kehutanan Ahli Muda</td>
+                                    </tr>
+                                    <tr>
+                                        <th class="py-2 pr-3 align-top font-semibold text-slate-600">Untuk</th>
+                                        <td class="py-2 text-slate-700">Melaksanakan penyuluhan kehutanan dan pendampingan kelompok tani hutan.</td>
+                                    </tr>
+                                    <tr>
+                                        <th class="py-2 pr-3 align-top font-semibold text-slate-600">Lokasi</th>
+                                        <td class="py-2 text-slate-700">Kecamatan Ngraho, Kabupaten Bojonegoro</td>
+                                    </tr>
+                                    <tr>
+                                        <th class="py-2 pr-3 align-top font-semibold text-slate-600">Tanggal Pelaksanaan</th>
+                                        <td class="py-2 font-medium text-slate-800">25 – 27 Oktober 2026</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <p>
+                            Demikian Surat Tugas ini dibuat untuk dilaksanakan dengan penuh tanggung jawab dan melaporkan hasilnya kepada Kepala UPTD CDK Wilayah Bojonegoro.
+                        </p>
+                    </div>
+
+                    <!-- Tanda tangan -->
+                    <div class="mt-6 flex justify-end sm:mt-8">
+                        <div class="w-64 text-center text-xs text-slate-700 sm:text-sm">
+                            <p>Bojonegoro, 22 Oktober 2026</p>
+                            <p class="mt-1 font-medium">Kepala UPTD CDK Wilayah Bojonegoro</p>
+                            <div class="h-16 sm:h-20"></div>
+                            <p class="font-semibold text-slate-900 underline underline-offset-2">...............................</p>
+                            <p class="mt-1 text-[11px] text-slate-500 sm:text-xs">NIP. ........................</p>
+                        </div>
+                    </div>
+                </article>
+            </div>
+
+            <div class="sticky bottom-0 z-20 flex flex-col-reverse gap-2 border-t border-slate-200 bg-white/95 px-4 py-3 backdrop-blur sm:flex-row sm:justify-end sm:px-6">
+                <button type="button" class="inline-flex items-center justify-center rounded-lg border border-slate-300 bg-white px-5 py-2.5 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50" data-modal-close>
+                    Tutup
+                </button>
+                <a href="modules/dashboard.php" class="inline-flex items-center justify-center gap-2 rounded-lg bg-indigo-600 px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-indigo-700">
+                    Masuk untuk Buat Surat
+                    <i class='bx bx-right-arrow-alt text-lg'></i>
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        (function () {
+            const modal = document.getElementById('contohSuratModal');
+            const openBtn = document.getElementById('lihatContohBtn');
+            let lastFocusedElement = null;
+
+            if (!modal || !openBtn) return;
+
+            function openModal() {
+                lastFocusedElement = document.activeElement;
+                modal.classList.remove('hidden');
+                modal.classList.add('flex');
+                document.body.classList.add('overflow-hidden');
+                const closeBtn = modal.querySelector('button[aria-label="Tutup"]');
+                if (closeBtn) closeBtn.focus();
+            }
+
+            function closeModal() {
+                modal.classList.add('hidden');
+                modal.classList.remove('flex');
+                document.body.classList.remove('overflow-hidden');
+                if (lastFocusedElement && typeof lastFocusedElement.focus === 'function') {
+                    lastFocusedElement.focus();
+                }
+            }
+
+            openBtn.addEventListener('click', openModal);
+
+            modal.querySelectorAll('[data-modal-close]').forEach(function (element) {
+                element.addEventListener('click', closeModal);
+            });
+
+            document.addEventListener('keydown', function (event) {
+                if (event.key === 'Escape' && !modal.classList.contains('hidden')) {
+                    closeModal();
+                }
+            });
+
+            modal.addEventListener('keydown', function (event) {
+                if (event.key !== 'Tab' || modal.classList.contains('hidden')) return;
+
+                const focusable = Array.from(modal.querySelectorAll('a[href], button:not([disabled])'))
+                    .filter(function (element) {
+                        return element.offsetParent !== null;
+                    });
+                if (!focusable.length) return;
+
+                const first = focusable[0];
+                const last = focusable[focusable.length - 1];
+
+                if (event.shiftKey && document.activeElement === first) {
+                    event.preventDefault();
+                    last.focus();
+                } else if (!event.shiftKey && document.activeElement === last) {
+                    event.preventDefault();
+                    first.focus();
+                }
+            });
+        })();
+    </script>
+</body>
+</html>
