@@ -2144,149 +2144,371 @@ try {
                                 </div>
                             </div>
 
-                            <div class="space-y-3.5">
-                                <p class="text-xs font-semibold uppercase tracking-wider text-slate-400">Pengaturan Halaman &amp; Huruf</p>
-
-                                <div class="space-y-1.5">
-                                    <div class="flex items-center justify-between gap-2">
-                                        <label class="text-sm font-medium text-slate-700">Margin Atas</label>
-                                        <div class="flex items-center gap-1">
-                                            <button type="button" class="layout-step w-6 h-6 inline-flex items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100" data-target="margin_top" data-dir="-1">−</button>
-                                            <span class="text-xs font-semibold text-slate-700 tabular-nums w-14 text-center"><span data-value="margin_top"><?= htmlspecialchars($layout_initial['margin_top']) ?></span> mm</span>
-                                            <button type="button" class="layout-step w-6 h-6 inline-flex items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100" data-target="margin_top" data-dir="1">+</button>
+                            <div class="space-y-2.5" id="layoutAccordions">
+                                <!-- Akordion 1: Margin & Huruf Global -->
+                                <div class="border border-slate-200 rounded-xl overflow-hidden bg-white shadow-xs">
+                                    <button type="button" class="layout-accordion-btn w-full flex items-center justify-between px-3.5 py-2.5 bg-slate-50 hover:bg-slate-100 text-slate-700 font-medium text-xs transition-colors" data-target="acc-global">
+                                        <span class="flex items-center gap-2">
+                                            <i class="bx bx-font text-indigo-600 text-sm"></i>
+                                            <span>Halaman &amp; Huruf Global</span>
+                                        </span>
+                                        <i class="bx bx-chevron-down text-base transition-transform layout-accordion-icon"></i>
+                                    </button>
+                                    <div id="acc-global" class="layout-accordion-content p-3.5 space-y-3.5 border-t border-slate-100">
+                                        <div class="space-y-1.5">
+                                            <div class="flex items-center justify-between gap-2">
+                                                <label class="text-xs font-medium text-slate-700">Margin Atas</label>
+                                                <div class="flex items-center gap-1">
+                                                    <button type="button" class="layout-step w-6 h-6 inline-flex items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100" data-target="margin_top" data-dir="-1">−</button>
+                                                    <span class="text-xs font-semibold text-slate-700 tabular-nums w-14 text-center"><span data-value="margin_top"><?= htmlspecialchars($layout_initial['margin_top']) ?></span> mm</span>
+                                                    <button type="button" class="layout-step w-6 h-6 inline-flex items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100" data-target="margin_top" data-dir="1">+</button>
+                                                </div>
+                                            </div>
+                                            <input type="range" data-layout-key="margin_top" min="5" max="40" step="0.5" value="<?= htmlspecialchars($layout_initial['margin_top']) ?>" class="w-full accent-indigo-600">
                                         </div>
-                                    </div>
-                                    <input type="range" data-layout-key="margin_top" min="5" max="40" step="0.5" value="<?= htmlspecialchars($layout_initial['margin_top']) ?>" class="w-full accent-indigo-600">
-                                    <div class="flex items-center justify-between gap-2">
-                                        <span class="text-[11px] text-slate-400">Rentang 5 – 40 mm</span>
+                                        <div class="space-y-1.5">
+                                            <div class="flex items-center justify-between gap-2">
+                                                <label class="text-xs font-medium text-slate-700">Margin Bawah</label>
+                                                <div class="flex items-center gap-1">
+                                                    <button type="button" class="layout-step w-6 h-6 inline-flex items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100" data-target="margin_bottom" data-dir="-1">−</button>
+                                                    <span class="text-xs font-semibold text-slate-700 tabular-nums w-14 text-center"><span data-value="margin_bottom"><?= htmlspecialchars($layout_initial['margin_bottom']) ?></span> mm</span>
+                                                    <button type="button" class="layout-step w-6 h-6 inline-flex items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100" data-target="margin_bottom" data-dir="1">+</button>
+                                                </div>
+                                            </div>
+                                            <input type="range" data-layout-key="margin_bottom" min="5" max="40" step="0.5" value="<?= htmlspecialchars($layout_initial['margin_bottom']) ?>" class="w-full accent-indigo-600">
+                                        </div>
+                                        <div class="space-y-1.5">
+                                            <div class="flex items-center justify-between gap-2">
+                                                <label class="text-xs font-medium text-slate-700">Margin Kiri</label>
+                                                <div class="flex items-center gap-1">
+                                                    <button type="button" class="layout-step w-6 h-6 inline-flex items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100" data-target="margin_left" data-dir="-1">−</button>
+                                                    <span class="text-xs font-semibold text-slate-700 tabular-nums w-14 text-center"><span data-value="margin_left"><?= htmlspecialchars($layout_initial['margin_left']) ?></span> mm</span>
+                                                    <button type="button" class="layout-step w-6 h-6 inline-flex items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100" data-target="margin_left" data-dir="1">+</button>
+                                                </div>
+                                            </div>
+                                            <input type="range" data-layout-key="margin_left" min="10" max="40" step="0.5" value="<?= htmlspecialchars($layout_initial['margin_left']) ?>" class="w-full accent-indigo-600">
+                                        </div>
+                                        <div class="space-y-1.5">
+                                            <div class="flex items-center justify-between gap-2">
+                                                <label class="text-xs font-medium text-slate-700">Margin Kanan</label>
+                                                <div class="flex items-center gap-1">
+                                                    <button type="button" class="layout-step w-6 h-6 inline-flex items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100" data-target="margin_right" data-dir="-1">−</button>
+                                                    <span class="text-xs font-semibold text-slate-700 tabular-nums w-14 text-center"><span data-value="margin_right"><?= htmlspecialchars($layout_initial['margin_right']) ?></span> mm</span>
+                                                    <button type="button" class="layout-step w-6 h-6 inline-flex items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100" data-target="margin_right" data-dir="1">+</button>
+                                                </div>
+                                            </div>
+                                            <input type="range" data-layout-key="margin_right" min="10" max="40" step="0.5" value="<?= htmlspecialchars($layout_initial['margin_right']) ?>" class="w-full accent-indigo-600">
+                                        </div>
+                                        <div class="space-y-1.5">
+                                            <div class="flex items-center justify-between gap-2">
+                                                <label class="text-xs font-medium text-slate-700">Ukuran Huruf Global</label>
+                                                <div class="flex items-center gap-1">
+                                                    <button type="button" class="layout-step w-6 h-6 inline-flex items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100" data-target="font_size" data-dir="-1">−</button>
+                                                    <span class="text-xs font-semibold text-slate-700 tabular-nums w-14 text-center"><span data-value="font_size"><?= htmlspecialchars($layout_initial['font_size']) ?></span> pt</span>
+                                                    <button type="button" class="layout-step w-6 h-6 inline-flex items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100" data-target="font_size" data-dir="1">+</button>
+                                                </div>
+                                            </div>
+                                            <input type="range" data-layout-key="font_size" min="9" max="13" step="0.5" value="<?= htmlspecialchars($layout_initial['font_size']) ?>" class="w-full accent-indigo-600">
+                                        </div>
+                                        <div class="space-y-1.5">
+                                            <div class="flex items-center justify-between gap-2">
+                                                <label class="text-xs font-medium text-slate-700">Jarak Antar Baris</label>
+                                                <div class="flex items-center gap-1">
+                                                    <button type="button" class="layout-step w-6 h-6 inline-flex items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100" data-target="line_height" data-dir="-1">−</button>
+                                                    <span class="text-xs font-semibold text-slate-700 tabular-nums w-14 text-center"><span data-value="line_height"><?= htmlspecialchars($layout_initial['line_height']) ?></span>×</span>
+                                                    <button type="button" class="layout-step w-6 h-6 inline-flex items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100" data-target="line_height" data-dir="1">+</button>
+                                                </div>
+                                            </div>
+                                            <input type="range" data-layout-key="line_height" min="1.0" max="2.0" step="0.05" value="<?= htmlspecialchars($layout_initial['line_height']) ?>" class="w-full accent-indigo-600">
+                                        </div>
                                     </div>
                                 </div>
 
-                                <div class="space-y-1.5">
-                                    <div class="flex items-center justify-between gap-2">
-                                        <label class="text-sm font-medium text-slate-700">Margin Bawah</label>
-                                        <div class="flex items-center gap-1">
-                                            <button type="button" class="layout-step w-6 h-6 inline-flex items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100" data-target="margin_bottom" data-dir="-1">−</button>
-                                            <span class="text-xs font-semibold text-slate-700 tabular-nums w-14 text-center"><span data-value="margin_bottom"><?= htmlspecialchars($layout_initial['margin_bottom']) ?></span> mm</span>
-                                            <button type="button" class="layout-step w-6 h-6 inline-flex items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100" data-target="margin_bottom" data-dir="1">+</button>
+                                <!-- Akordion 2: Kop & Judul Surat -->
+                                <div class="border border-slate-200 rounded-xl overflow-hidden bg-white shadow-xs">
+                                    <button type="button" class="layout-accordion-btn w-full flex items-center justify-between px-3.5 py-2.5 bg-slate-50 hover:bg-slate-100 text-slate-700 font-medium text-xs transition-colors" data-target="acc-kop-judul">
+                                        <span class="flex items-center gap-2">
+                                            <i class="bx bx-heading text-indigo-600 text-sm"></i>
+                                            <span>Kop &amp; Judul Surat</span>
+                                        </span>
+                                        <i class="bx bx-chevron-down text-base transition-transform layout-accordion-icon"></i>
+                                    </button>
+                                    <div id="acc-kop-judul" class="layout-accordion-content p-3.5 space-y-3.5 border-t border-slate-100 hidden">
+                                        <div class="space-y-1.5">
+                                            <div class="flex items-center justify-between gap-2">
+                                                <label class="text-xs font-medium text-slate-700">Jarak Bawah Kop</label>
+                                                <div class="flex items-center gap-1">
+                                                    <button type="button" class="layout-step w-6 h-6 inline-flex items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100" data-target="kop_bottom_spacing" data-dir="-1">−</button>
+                                                    <span class="text-xs font-semibold text-slate-700 tabular-nums w-14 text-center"><span data-value="kop_bottom_spacing"><?= htmlspecialchars($layout_initial['kop_bottom_spacing'] ?? 10) ?></span> px</span>
+                                                    <button type="button" class="layout-step w-6 h-6 inline-flex items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100" data-target="kop_bottom_spacing" data-dir="1">+</button>
+                                                </div>
+                                            </div>
+                                            <input type="range" data-layout-key="kop_bottom_spacing" min="0" max="50" step="1" value="<?= htmlspecialchars($layout_initial['kop_bottom_spacing'] ?? 10) ?>" class="w-full accent-indigo-600">
+                                        </div>
+                                        <div class="space-y-1.5">
+                                            <div class="flex items-center justify-between gap-2">
+                                                <label class="text-xs font-medium text-slate-700">Spasi Atas SURAT TUGAS</label>
+                                                <div class="flex items-center gap-1">
+                                                    <button type="button" class="layout-step w-6 h-6 inline-flex items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100" data-target="judul_top_spacing" data-dir="-1">−</button>
+                                                    <span class="text-xs font-semibold text-slate-700 tabular-nums w-14 text-center"><span data-value="judul_top_spacing"><?= htmlspecialchars($layout_initial['judul_top_spacing'] ?? 0) ?></span> px</span>
+                                                    <button type="button" class="layout-step w-6 h-6 inline-flex items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100" data-target="judul_top_spacing" data-dir="1">+</button>
+                                                </div>
+                                            </div>
+                                            <input type="range" data-layout-key="judul_top_spacing" min="-15" max="40" step="1" value="<?= htmlspecialchars($layout_initial['judul_top_spacing'] ?? 0) ?>" class="w-full accent-indigo-600">
+                                        </div>
+                                        <div class="space-y-1.5">
+                                            <div class="flex items-center justify-between gap-2">
+                                                <label class="text-xs font-medium text-slate-700">Jarak Judul ke Nomor</label>
+                                                <div class="flex items-center gap-1">
+                                                    <button type="button" class="layout-step w-6 h-6 inline-flex items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100" data-target="nomor_surat_spacing" data-dir="-1">−</button>
+                                                    <span class="text-xs font-semibold text-slate-700 tabular-nums w-14 text-center"><span data-value="nomor_surat_spacing"><?= htmlspecialchars($layout_initial['nomor_surat_spacing'] ?? 4) ?></span> px</span>
+                                                    <button type="button" class="layout-step w-6 h-6 inline-flex items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100" data-target="nomor_surat_spacing" data-dir="1">+</button>
+                                                </div>
+                                            </div>
+                                            <input type="range" data-layout-key="nomor_surat_spacing" min="0" max="30" step="1" value="<?= htmlspecialchars($layout_initial['nomor_surat_spacing'] ?? 4) ?>" class="w-full accent-indigo-600">
+                                        </div>
+                                        <div class="space-y-1.5">
+                                            <div class="flex items-center justify-between gap-2">
+                                                <label class="text-xs font-medium text-slate-700">Jarak Sesudah Nomor</label>
+                                                <div class="flex items-center gap-1">
+                                                    <button type="button" class="layout-step w-6 h-6 inline-flex items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100" data-target="judul_bottom_spacing" data-dir="-1">−</button>
+                                                    <span class="text-xs font-semibold text-slate-700 tabular-nums w-14 text-center"><span data-value="judul_bottom_spacing"><?= htmlspecialchars($layout_initial['judul_bottom_spacing'] ?? 10) ?></span> px</span>
+                                                    <button type="button" class="layout-step w-6 h-6 inline-flex items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100" data-target="judul_bottom_spacing" data-dir="1">+</button>
+                                                </div>
+                                            </div>
+                                            <input type="range" data-layout-key="judul_bottom_spacing" min="0" max="40" step="1" value="<?= htmlspecialchars($layout_initial['judul_bottom_spacing'] ?? 10) ?>" class="w-full accent-indigo-600">
                                         </div>
                                     </div>
-                                    <input type="range" data-layout-key="margin_bottom" min="5" max="40" step="0.5" value="<?= htmlspecialchars($layout_initial['margin_bottom']) ?>" class="w-full accent-indigo-600">
                                 </div>
 
-                                <div class="space-y-1.5">
-                                    <div class="flex items-center justify-between gap-2">
-                                        <label class="text-sm font-medium text-slate-700">Margin Kiri</label>
-                                        <div class="flex items-center gap-1">
-                                            <button type="button" class="layout-step w-6 h-6 inline-flex items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100" data-target="margin_left" data-dir="-1">−</button>
-                                            <span class="text-xs font-semibold text-slate-700 tabular-nums w-14 text-center"><span data-value="margin_left"><?= htmlspecialchars($layout_initial['margin_left']) ?></span> mm</span>
-                                            <button type="button" class="layout-step w-6 h-6 inline-flex items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100" data-target="margin_left" data-dir="1">+</button>
+                                <!-- Akordion 3: Dasar & Memerintahkan -->
+                                <div class="border border-slate-200 rounded-xl overflow-hidden bg-white shadow-xs">
+                                    <button type="button" class="layout-accordion-btn w-full flex items-center justify-between px-3.5 py-2.5 bg-slate-50 hover:bg-slate-100 text-slate-700 font-medium text-xs transition-colors" data-target="acc-dasar">
+                                        <span class="flex items-center gap-2">
+                                            <i class="bx bx-list-ol text-indigo-600 text-sm"></i>
+                                            <span>Blok Dasar &amp; Memerintahkan</span>
+                                        </span>
+                                        <i class="bx bx-chevron-down text-base transition-transform layout-accordion-icon"></i>
+                                    </button>
+                                    <div id="acc-dasar" class="layout-accordion-content p-3.5 space-y-3.5 border-t border-slate-100 hidden">
+                                        <div class="space-y-1.5">
+                                            <div class="flex items-center justify-between gap-2">
+                                                <label class="text-xs font-medium text-slate-700">Jarak Sebelum DASAR</label>
+                                                <div class="flex items-center gap-1">
+                                                    <button type="button" class="layout-step w-6 h-6 inline-flex items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100" data-target="dasar_top_spacing" data-dir="-1">−</button>
+                                                    <span class="text-xs font-semibold text-slate-700 tabular-nums w-14 text-center"><span data-value="dasar_top_spacing"><?= htmlspecialchars($layout_initial['dasar_top_spacing'] ?? 6) ?></span> px</span>
+                                                    <button type="button" class="layout-step w-6 h-6 inline-flex items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100" data-target="dasar_top_spacing" data-dir="1">+</button>
+                                                </div>
+                                            </div>
+                                            <input type="range" data-layout-key="dasar_top_spacing" min="0" max="30" step="1" value="<?= htmlspecialchars($layout_initial['dasar_top_spacing'] ?? 6) ?>" class="w-full accent-indigo-600">
                                         </div>
-                                    </div>
-                                    <input type="range" data-layout-key="margin_left" min="10" max="40" step="0.5" value="<?= htmlspecialchars($layout_initial['margin_left']) ?>" class="w-full accent-indigo-600">
-                                    <div class="flex items-center justify-between gap-2">
-                                        <span class="text-[11px] text-slate-400">Rentang 10 – 40 mm</span>
+                                        <div class="space-y-1.5">
+                                            <div class="flex items-center justify-between gap-2">
+                                                <label class="text-xs font-medium text-slate-700">Kerapatan Butir Dasar</label>
+                                                <div class="flex items-center gap-1">
+                                                    <button type="button" class="layout-step w-6 h-6 inline-flex items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100" data-target="dasar_item_spacing" data-dir="-1">−</button>
+                                                    <span class="text-xs font-semibold text-slate-700 tabular-nums w-14 text-center"><span data-value="dasar_item_spacing"><?= htmlspecialchars($layout_initial['dasar_item_spacing'] ?? 3) ?></span> px</span>
+                                                    <button type="button" class="layout-step w-6 h-6 inline-flex items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100" data-target="dasar_item_spacing" data-dir="1">+</button>
+                                                </div>
+                                            </div>
+                                            <input type="range" data-layout-key="dasar_item_spacing" min="0" max="20" step="1" value="<?= htmlspecialchars($layout_initial['dasar_item_spacing'] ?? 3) ?>" class="w-full accent-indigo-600">
+                                        </div>
+                                        <div class="space-y-1.5">
+                                            <div class="flex items-center justify-between gap-2">
+                                                <label class="text-xs font-medium text-slate-700">Jarak Sesudah DASAR</label>
+                                                <div class="flex items-center gap-1">
+                                                    <button type="button" class="layout-step w-6 h-6 inline-flex items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100" data-target="dasar_bottom_spacing" data-dir="-1">−</button>
+                                                    <span class="text-xs font-semibold text-slate-700 tabular-nums w-14 text-center"><span data-value="dasar_bottom_spacing"><?= htmlspecialchars($layout_initial['dasar_bottom_spacing'] ?? 8) ?></span> px</span>
+                                                    <button type="button" class="layout-step w-6 h-6 inline-flex items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100" data-target="dasar_bottom_spacing" data-dir="1">+</button>
+                                                </div>
+                                            </div>
+                                            <input type="range" data-layout-key="dasar_bottom_spacing" min="0" max="30" step="1" value="<?= htmlspecialchars($layout_initial['dasar_bottom_spacing'] ?? 8) ?>" class="w-full accent-indigo-600">
+                                        </div>
+                                        <div class="space-y-1.5">
+                                            <div class="flex items-center justify-between gap-2">
+                                                <label class="text-xs font-medium text-slate-700">Spasi MEMERINTAHKAN</label>
+                                                <div class="flex items-center gap-1">
+                                                    <button type="button" class="layout-step w-6 h-6 inline-flex items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100" data-target="memerintahkan_spacing" data-dir="-1">−</button>
+                                                    <span class="text-xs font-semibold text-slate-700 tabular-nums w-14 text-center"><span data-value="memerintahkan_spacing"><?= htmlspecialchars($layout_initial['memerintahkan_spacing'] ?? 8) ?></span> px</span>
+                                                    <button type="button" class="layout-step w-6 h-6 inline-flex items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100" data-target="memerintahkan_spacing" data-dir="1">+</button>
+                                                </div>
+                                            </div>
+                                            <input type="range" data-layout-key="memerintahkan_spacing" min="0" max="30" step="1" value="<?= htmlspecialchars($layout_initial['memerintahkan_spacing'] ?? 8) ?>" class="w-full accent-indigo-600">
+                                        </div>
                                     </div>
                                 </div>
 
-                                <div class="space-y-1.5">
-                                    <div class="flex items-center justify-between gap-2">
-                                        <label class="text-sm font-medium text-slate-700">Margin Kanan</label>
-                                        <div class="flex items-center gap-1">
-                                            <button type="button" class="layout-step w-6 h-6 inline-flex items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100" data-target="margin_right" data-dir="-1">−</button>
-                                            <span class="text-xs font-semibold text-slate-700 tabular-nums w-14 text-center"><span data-value="margin_right"><?= htmlspecialchars($layout_initial['margin_right']) ?></span> mm</span>
-                                            <button type="button" class="layout-step w-6 h-6 inline-flex items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100" data-target="margin_right" data-dir="1">+</button>
+                                <!-- Akordion 4: Blok Pegawai -->
+                                <div class="border border-slate-200 rounded-xl overflow-hidden bg-white shadow-xs">
+                                    <button type="button" class="layout-accordion-btn w-full flex items-center justify-between px-3.5 py-2.5 bg-slate-50 hover:bg-slate-100 text-slate-700 font-medium text-xs transition-colors" data-target="acc-pegawai">
+                                        <span class="flex items-center gap-2">
+                                            <i class="bx bx-user text-indigo-600 text-sm"></i>
+                                            <span>Blok Pegawai</span>
+                                        </span>
+                                        <i class="bx bx-chevron-down text-base transition-transform layout-accordion-icon"></i>
+                                    </button>
+                                    <div id="acc-pegawai" class="layout-accordion-content p-3.5 space-y-3.5 border-t border-slate-100 hidden">
+                                        <div class="space-y-1.5">
+                                            <div class="flex items-center justify-between gap-2">
+                                                <label class="text-xs font-medium text-slate-700">Jarak Sebelum KEPADA</label>
+                                                <div class="flex items-center gap-1">
+                                                    <button type="button" class="layout-step w-6 h-6 inline-flex items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100" data-target="pegawai_top_spacing" data-dir="-1">−</button>
+                                                    <span class="text-xs font-semibold text-slate-700 tabular-nums w-14 text-center"><span data-value="pegawai_top_spacing"><?= htmlspecialchars($layout_initial['pegawai_top_spacing'] ?? 6) ?></span> px</span>
+                                                    <button type="button" class="layout-step w-6 h-6 inline-flex items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100" data-target="pegawai_top_spacing" data-dir="1">+</button>
+                                                </div>
+                                            </div>
+                                            <input type="range" data-layout-key="pegawai_top_spacing" min="0" max="30" step="1" value="<?= htmlspecialchars($layout_initial['pegawai_top_spacing'] ?? 6) ?>" class="w-full accent-indigo-600">
+                                        </div>
+                                        <div class="space-y-1.5">
+                                            <div class="flex items-center justify-between gap-2">
+                                                <label class="text-xs font-medium text-slate-700">Jarak Antar Pegawai</label>
+                                                <div class="flex items-center gap-1">
+                                                    <button type="button" class="layout-step w-6 h-6 inline-flex items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100" data-target="pegawai_gap_spacing" data-dir="-1">−</button>
+                                                    <span class="text-xs font-semibold text-slate-700 tabular-nums w-14 text-center"><span data-value="pegawai_gap_spacing"><?= htmlspecialchars($layout_initial['pegawai_gap_spacing'] ?? 8) ?></span> px</span>
+                                                    <button type="button" class="layout-step w-6 h-6 inline-flex items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100" data-target="pegawai_gap_spacing" data-dir="1">+</button>
+                                                </div>
+                                            </div>
+                                            <input type="range" data-layout-key="pegawai_gap_spacing" min="0" max="35" step="1" value="<?= htmlspecialchars($layout_initial['pegawai_gap_spacing'] ?? 8) ?>" class="w-full accent-indigo-600">
+                                            <span class="text-[11px] text-slate-400">Jarak pemisah antar orang pada daftar pegawai</span>
+                                        </div>
+                                        <div class="space-y-1.5">
+                                            <div class="flex items-center justify-between gap-2">
+                                                <label class="text-xs font-medium text-slate-700">Kerapatan Baris Identitas</label>
+                                                <div class="flex items-center gap-1">
+                                                    <button type="button" class="layout-step w-6 h-6 inline-flex items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100" data-target="pegawai_line_spacing" data-dir="-1">−</button>
+                                                    <span class="text-xs font-semibold text-slate-700 tabular-nums w-14 text-center"><span data-value="pegawai_line_spacing"><?= htmlspecialchars($layout_initial['pegawai_line_spacing'] ?? 2) ?></span> px</span>
+                                                    <button type="button" class="layout-step w-6 h-6 inline-flex items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100" data-target="pegawai_line_spacing" data-dir="1">+</button>
+                                                </div>
+                                            </div>
+                                            <input type="range" data-layout-key="pegawai_line_spacing" min="0" max="15" step="1" value="<?= htmlspecialchars($layout_initial['pegawai_line_spacing'] ?? 2) ?>" class="w-full accent-indigo-600">
+                                            <span class="text-[11px] text-slate-400">Jarak antar baris Nama, NIP, Pangkat, Jabatan</span>
                                         </div>
                                     </div>
-                                    <input type="range" data-layout-key="margin_right" min="10" max="40" step="0.5" value="<?= htmlspecialchars($layout_initial['margin_right']) ?>" class="w-full accent-indigo-600">
                                 </div>
 
-                                <div class="space-y-1.5">
-                                    <div class="flex items-center justify-between gap-2">
-                                        <label class="text-sm font-medium text-slate-700">Ukuran Huruf Global</label>
-                                        <div class="flex items-center gap-1">
-                                            <button type="button" class="layout-step w-6 h-6 inline-flex items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100" data-target="font_size" data-dir="-1">−</button>
-                                            <span class="text-xs font-semibold text-slate-700 tabular-nums w-14 text-center"><span data-value="font_size"><?= htmlspecialchars($layout_initial['font_size']) ?></span> pt</span>
-                                            <button type="button" class="layout-step w-6 h-6 inline-flex items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100" data-target="font_size" data-dir="1">+</button>
+                                <!-- Akordion 5: Blok Untuk -->
+                                <div class="border border-slate-200 rounded-xl overflow-hidden bg-white shadow-xs">
+                                    <button type="button" class="layout-accordion-btn w-full flex items-center justify-between px-3.5 py-2.5 bg-slate-50 hover:bg-slate-100 text-slate-700 font-medium text-xs transition-colors" data-target="acc-untuk">
+                                        <span class="flex items-center gap-2">
+                                            <i class="bx bx-task text-indigo-600 text-sm"></i>
+                                            <span>Blok Untuk</span>
+                                        </span>
+                                        <i class="bx bx-chevron-down text-base transition-transform layout-accordion-icon"></i>
+                                    </button>
+                                    <div id="acc-untuk" class="layout-accordion-content p-3.5 space-y-3.5 border-t border-slate-100 hidden">
+                                        <div class="space-y-1.5">
+                                            <div class="flex items-center justify-between gap-2">
+                                                <label class="text-xs font-medium text-slate-700">Jarak Sebelum UNTUK</label>
+                                                <div class="flex items-center gap-1">
+                                                    <button type="button" class="layout-step w-6 h-6 inline-flex items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100" data-target="untuk_top_spacing" data-dir="-1">−</button>
+                                                    <span class="text-xs font-semibold text-slate-700 tabular-nums w-14 text-center"><span data-value="untuk_top_spacing"><?= htmlspecialchars($layout_initial['untuk_top_spacing'] ?? 6) ?></span> px</span>
+                                                    <button type="button" class="layout-step w-6 h-6 inline-flex items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100" data-target="untuk_top_spacing" data-dir="1">+</button>
+                                                </div>
+                                            </div>
+                                            <input type="range" data-layout-key="untuk_top_spacing" min="0" max="30" step="1" value="<?= htmlspecialchars($layout_initial['untuk_top_spacing'] ?? 6) ?>" class="w-full accent-indigo-600">
+                                        </div>
+                                        <div class="space-y-1.5">
+                                            <div class="flex items-center justify-between gap-2">
+                                                <label class="text-xs font-medium text-slate-700">Kerapatan Butir Tugas</label>
+                                                <div class="flex items-center gap-1">
+                                                    <button type="button" class="layout-step w-6 h-6 inline-flex items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100" data-target="untuk_item_spacing" data-dir="-1">−</button>
+                                                    <span class="text-xs font-semibold text-slate-700 tabular-nums w-14 text-center"><span data-value="untuk_item_spacing"><?= htmlspecialchars($layout_initial['untuk_item_spacing'] ?? 3) ?></span> px</span>
+                                                    <button type="button" class="layout-step w-6 h-6 inline-flex items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100" data-target="untuk_item_spacing" data-dir="1">+</button>
+                                                </div>
+                                            </div>
+                                            <input type="range" data-layout-key="untuk_item_spacing" min="0" max="20" step="1" value="<?= htmlspecialchars($layout_initial['untuk_item_spacing'] ?? 3) ?>" class="w-full accent-indigo-600">
+                                        </div>
+                                        <div class="space-y-1.5">
+                                            <div class="flex items-center justify-between gap-2">
+                                                <label class="text-xs font-medium text-slate-700">Jarak Sesudah Tugas</label>
+                                                <div class="flex items-center gap-1">
+                                                    <button type="button" class="layout-step w-6 h-6 inline-flex items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100" data-target="untuk_bottom_spacing" data-dir="-1">−</button>
+                                                    <span class="text-xs font-semibold text-slate-700 tabular-nums w-14 text-center"><span data-value="untuk_bottom_spacing"><?= htmlspecialchars($layout_initial['untuk_bottom_spacing'] ?? 10) ?></span> px</span>
+                                                    <button type="button" class="layout-step w-6 h-6 inline-flex items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100" data-target="untuk_bottom_spacing" data-dir="1">+</button>
+                                                </div>
+                                            </div>
+                                            <input type="range" data-layout-key="untuk_bottom_spacing" min="0" max="30" step="1" value="<?= htmlspecialchars($layout_initial['untuk_bottom_spacing'] ?? 10) ?>" class="w-full accent-indigo-600">
                                         </div>
                                     </div>
-                                    <input type="range" data-layout-key="font_size" min="9" max="13" step="0.5" value="<?= htmlspecialchars($layout_initial['font_size']) ?>" class="w-full accent-indigo-600">
                                 </div>
 
-                                <div class="space-y-1.5">
-                                    <div class="flex items-center justify-between gap-2">
-                                        <label class="text-sm font-medium text-slate-700">Jarak Antar Baris</label>
-                                        <div class="flex items-center gap-1">
-                                            <button type="button" class="layout-step w-6 h-6 inline-flex items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100" data-target="line_height" data-dir="-1">−</button>
-                                            <span class="text-xs font-semibold text-slate-700 tabular-nums w-14 text-center"><span data-value="line_height"><?= htmlspecialchars($layout_initial['line_height']) ?></span>×</span>
-                                            <button type="button" class="layout-step w-6 h-6 inline-flex items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100" data-target="line_height" data-dir="1">+</button>
+                                <!-- Akordion 6: Blok Tanda Tangan -->
+                                <div class="border border-slate-200 rounded-xl overflow-hidden bg-white shadow-xs">
+                                    <button type="button" class="layout-accordion-btn w-full flex items-center justify-between px-3.5 py-2.5 bg-slate-50 hover:bg-slate-100 text-slate-700 font-medium text-xs transition-colors" data-target="acc-ttd">
+                                        <span class="flex items-center gap-2">
+                                            <i class="bx bx-edit-alt text-indigo-600 text-sm"></i>
+                                            <span>Blok Tanda Tangan</span>
+                                        </span>
+                                        <i class="bx bx-chevron-down text-base transition-transform layout-accordion-icon"></i>
+                                    </button>
+                                    <div id="acc-ttd" class="layout-accordion-content p-3.5 space-y-3.5 border-t border-slate-100 hidden">
+                                        <div class="space-y-1.5">
+                                            <div class="flex items-center justify-between gap-2">
+                                                <label class="text-xs font-medium text-slate-700">Jarak Atas Blok TTD</label>
+                                                <div class="flex items-center gap-1">
+                                                    <button type="button" class="layout-step w-6 h-6 inline-flex items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100" data-target="ttd_offset" data-dir="-1">−</button>
+                                                    <span class="text-xs font-semibold text-slate-700 tabular-nums w-14 text-center"><span data-value="ttd_offset"><?= htmlspecialchars($layout_initial['ttd_offset'] ?? 10) ?></span> px</span>
+                                                    <button type="button" class="layout-step w-6 h-6 inline-flex items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100" data-target="ttd_offset" data-dir="1">+</button>
+                                                </div>
+                                            </div>
+                                            <input type="range" data-layout-key="ttd_offset" min="-20" max="80" step="1" value="<?= htmlspecialchars($layout_initial['ttd_offset'] ?? 10) ?>" class="w-full accent-indigo-600">
                                         </div>
+                                        <div class="space-y-1.5">
+                                            <div class="flex items-center justify-between gap-2">
+                                                <label class="text-xs font-medium text-slate-700">Posisi Horizontal (X)</label>
+                                                <div class="flex items-center gap-1">
+                                                    <button type="button" class="layout-step w-6 h-6 inline-flex items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100" data-target="ttd_x" data-dir="-1">−</button>
+                                                    <span class="text-xs font-semibold text-slate-700 tabular-nums w-14 text-center"><span data-value="ttd_x"><?= htmlspecialchars($layout_initial['ttd_x'] ?? 0) ?></span> px</span>
+                                                    <button type="button" class="layout-step w-6 h-6 inline-flex items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100" data-target="ttd_x" data-dir="1">+</button>
+                                                </div>
+                                            </div>
+                                            <input type="range" data-layout-key="ttd_x" min="-50" max="50" step="1" value="<?= htmlspecialchars($layout_initial['ttd_x'] ?? 0) ?>" class="w-full accent-indigo-600">
+                                        </div>
+                                        <div class="space-y-1.5">
+                                            <div class="flex items-center justify-between gap-2">
+                                                <label class="text-xs font-medium text-slate-700">Jarak Tanggal ke Jabatan</label>
+                                                <div class="flex items-center gap-1">
+                                                    <button type="button" class="layout-step w-6 h-6 inline-flex items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100" data-target="ttd_date_to_jabatan" data-dir="-1">−</button>
+                                                    <span class="text-xs font-semibold text-slate-700 tabular-nums w-14 text-center"><span data-value="ttd_date_to_jabatan"><?= htmlspecialchars($layout_initial['ttd_date_to_jabatan'] ?? 4) ?></span> px</span>
+                                                    <button type="button" class="layout-step w-6 h-6 inline-flex items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100" data-target="ttd_date_to_jabatan" data-dir="1">+</button>
+                                                </div>
+                                            </div>
+                                            <input type="range" data-layout-key="ttd_date_to_jabatan" min="0" max="25" step="1" value="<?= htmlspecialchars($layout_initial['ttd_date_to_jabatan'] ?? 4) ?>" class="w-full accent-indigo-600">
+                                        </div>
+                                        <div class="space-y-1.5">
+                                            <div class="flex items-center justify-between gap-2">
+                                                <label class="text-xs font-medium text-slate-700">Ruang TTD &amp; Stempel</label>
+                                                <div class="flex items-center gap-1">
+                                                    <button type="button" class="layout-step w-6 h-6 inline-flex items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100" data-target="ttd_space_height" data-dir="-1">−</button>
+                                                    <span class="text-xs font-semibold text-slate-700 tabular-nums w-14 text-center"><span data-value="ttd_space_height"><?= htmlspecialchars($layout_initial['ttd_space_height'] ?? 60) ?></span> px</span>
+                                                    <button type="button" class="layout-step w-6 h-6 inline-flex items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100" data-target="ttd_space_height" data-dir="1">+</button>
+                                                </div>
+                                            </div>
+                                            <input type="range" data-layout-key="ttd_space_height" min="20" max="120" step="2" value="<?= htmlspecialchars($layout_initial['ttd_space_height'] ?? 60) ?>" class="w-full accent-indigo-600">
+                                        </div>
+                                        <div class="space-y-1.5">
+                                            <div class="flex items-center justify-between gap-2">
+                                                <label class="text-xs font-medium text-slate-700">Jarak ke Nama &amp; NIP</label>
+                                                <div class="flex items-center gap-1">
+                                                    <button type="button" class="layout-step w-6 h-6 inline-flex items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100" data-target="ttd_name_nip_spacing" data-dir="-1">−</button>
+                                                    <span class="text-xs font-semibold text-slate-700 tabular-nums w-14 text-center"><span data-value="ttd_name_nip_spacing"><?= htmlspecialchars($layout_initial['ttd_name_nip_spacing'] ?? 4) ?></span> px</span>
+                                                    <button type="button" class="layout-step w-6 h-6 inline-flex items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100" data-target="ttd_name_nip_spacing" data-dir="1">+</button>
+                                                </div>
+                                            </div>
+                                            <input type="range" data-layout-key="ttd_name_nip_spacing" min="0" max="25" step="1" value="<?= htmlspecialchars($layout_initial['ttd_name_nip_spacing'] ?? 4) ?>" class="w-full accent-indigo-600">
+                                        </div>
+                                        <label class="flex items-start gap-2.5 p-2.5 rounded-lg bg-slate-50 border border-slate-200 cursor-pointer">
+                                            <input type="checkbox" id="layoutLockTtd" class="mt-0.5 accent-indigo-600" <?= !empty($layout_initial['lock_ttd']) ? 'checked' : '' ?>>
+                                            <span class="text-xs text-slate-700">
+                                                Kunci Blok TTD
+                                                <span class="block text-[11px] text-slate-400">Cegah blok tanda tangan terpotong ke halaman berikutnya.</span>
+                                            </span>
+                                        </label>
                                     </div>
-                                    <input type="range" data-layout-key="line_height" min="1.0" max="2.0" step="0.05" value="<?= htmlspecialchars($layout_initial['line_height']) ?>" class="w-full accent-indigo-600">
                                 </div>
                             </div>
 
-                            <div class="space-y-3.5 pt-1 border-t border-slate-100">
-                                <p class="text-xs font-semibold uppercase tracking-wider text-slate-400 pt-3">Pengaturan Posisi Bagian</p>
-
-                                <div class="space-y-1.5">
-                                    <div class="flex items-center justify-between gap-2">
-                                        <label class="text-sm font-medium text-slate-700">Jarak Kop ke Judul</label>
-                                        <div class="flex items-center gap-1">
-                                            <button type="button" class="layout-step w-6 h-6 inline-flex items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100" data-target="kop_offset" data-dir="-1">−</button>
-                                            <span class="text-xs font-semibold text-slate-700 tabular-nums w-14 text-center"><span data-value="kop_offset"><?= htmlspecialchars($layout_initial['kop_offset']) ?></span> px</span>
-                                            <button type="button" class="layout-step w-6 h-6 inline-flex items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100" data-target="kop_offset" data-dir="1">+</button>
-                                        </div>
-                                    </div>
-                                    <input type="range" data-layout-key="kop_offset" min="-20" max="60" step="1" value="<?= htmlspecialchars($layout_initial['kop_offset']) ?>" class="w-full accent-indigo-600">
-                                </div>
-
-                                <div class="space-y-1.5">
-                                    <div class="flex items-center justify-between gap-2">
-                                        <label class="text-sm font-medium text-slate-700">Jarak Antar Bagian</label>
-                                        <div class="flex items-center gap-1">
-                                            <button type="button" class="layout-step w-6 h-6 inline-flex items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100" data-target="section_spacing" data-dir="-1">−</button>
-                                            <span class="text-xs font-semibold text-slate-700 tabular-nums w-14 text-center"><span data-value="section_spacing"><?= htmlspecialchars($layout_initial['section_spacing']) ?></span> px</span>
-                                            <button type="button" class="layout-step w-6 h-6 inline-flex items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100" data-target="section_spacing" data-dir="1">+</button>
-                                        </div>
-                                    </div>
-                                    <input type="range" data-layout-key="section_spacing" min="0" max="30" step="1" value="<?= htmlspecialchars($layout_initial['section_spacing']) ?>" class="w-full accent-indigo-600">
-                                </div>
-
-                                <div class="space-y-1.5">
-                                    <div class="flex items-center justify-between gap-2">
-                                        <label class="text-sm font-medium text-slate-700">Jarak Atas Blok TTD</label>
-                                        <div class="flex items-center gap-1">
-                                            <button type="button" class="layout-step w-6 h-6 inline-flex items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100" data-target="ttd_offset" data-dir="-1">−</button>
-                                            <span class="text-xs font-semibold text-slate-700 tabular-nums w-14 text-center"><span data-value="ttd_offset"><?= htmlspecialchars($layout_initial['ttd_offset']) ?></span> px</span>
-                                            <button type="button" class="layout-step w-6 h-6 inline-flex items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100" data-target="ttd_offset" data-dir="1">+</button>
-                                        </div>
-                                    </div>
-                                    <input type="range" data-layout-key="ttd_offset" min="-20" max="100" step="1" value="<?= htmlspecialchars($layout_initial['ttd_offset']) ?>" class="w-full accent-indigo-600">
-                                </div>
-
-                                <div class="space-y-1.5">
-                                    <div class="flex items-center justify-between gap-2">
-                                        <label class="text-sm font-medium text-slate-700">Posisi Horizontal TTD</label>
-                                        <div class="flex items-center gap-1">
-                                            <button type="button" class="layout-step w-6 h-6 inline-flex items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100" data-target="ttd_x" data-dir="-1">−</button>
-                                            <span class="text-xs font-semibold text-slate-700 tabular-nums w-14 text-center"><span data-value="ttd_x"><?= htmlspecialchars($layout_initial['ttd_x']) ?></span> px</span>
-                                            <button type="button" class="layout-step w-6 h-6 inline-flex items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100" data-target="ttd_x" data-dir="1">+</button>
-                                        </div>
-                                    </div>
-                                    <input type="range" data-layout-key="ttd_x" min="-50" max="50" step="1" value="<?= htmlspecialchars($layout_initial['ttd_x']) ?>" class="w-full accent-indigo-600">
-                                </div>
-
-                                <label class="flex items-start gap-2.5 p-3 rounded-lg bg-slate-50 border border-slate-200 cursor-pointer">
-                                    <input type="checkbox" id="layoutLockTtd" class="mt-0.5 accent-indigo-600" <?= !empty($layout_initial['lock_ttd']) ? 'checked' : '' ?>>
-                                    <span class="text-sm text-slate-700">
-                                        Kunci Blok TTD
-                                        <span class="block text-xs text-slate-500">Cegah blok tanda tangan terpotong ke halaman berikutnya.</span>
-                                    </span>
-                                </label>
-                            </div>
-
-                            <div class="space-y-2">
+                            <div class="space-y-2 pt-2 border-t border-slate-100">
                                 <button type="button" id="layoutApplyBtn" class="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-slate-800 hover:bg-slate-900 text-white text-sm font-medium rounded-lg transition-colors">
                                     <i class="bx bx-check-double text-base"></i>
                                     <span>Terapkan Perubahan</span>
@@ -2342,16 +2564,31 @@ try {
             const HAS_SAVED_DEFAULT = <?= $layout_has_saved_default ? 'true' : 'false' ?>;
             const STORAGE_KEY = 'spt_layout_' + SURAT_ID;
             const STEP_CONFIG = {
-                margin_top: { min: 5, max: 40, step: 0.5, decimals: 1 },
-                margin_bottom: { min: 5, max: 40, step: 0.5, decimals: 1 },
-                margin_left: { min: 10, max: 40, step: 0.5, decimals: 1 },
-                margin_right: { min: 10, max: 40, step: 0.5, decimals: 1 },
-                font_size: { min: 9, max: 13, step: 0.5, decimals: 1 },
-                line_height: { min: 1.0, max: 2.0, step: 0.05, decimals: 2 },
-                kop_offset: { min: -20, max: 60, step: 1, decimals: 0 },
-                section_spacing: { min: 0, max: 30, step: 1, decimals: 0 },
-                ttd_offset: { min: -20, max: 100, step: 1, decimals: 0 },
-                ttd_x: { min: -50, max: 50, step: 1, decimals: 0 }
+                margin_top: { min: 5, max: 40, step: 0.5, decimals: 1, unit: 'mm' },
+                margin_bottom: { min: 5, max: 40, step: 0.5, decimals: 1, unit: 'mm' },
+                margin_left: { min: 10, max: 40, step: 0.5, decimals: 1, unit: 'mm' },
+                margin_right: { min: 10, max: 40, step: 0.5, decimals: 1, unit: 'mm' },
+                font_size: { min: 9, max: 13, step: 0.5, decimals: 1, unit: 'pt' },
+                line_height: { min: 1.0, max: 2.0, step: 0.05, decimals: 2, unit: '×' },
+                kop_bottom_spacing: { min: 0, max: 50, step: 1, decimals: 0, unit: 'px' },
+                judul_top_spacing: { min: -15, max: 40, step: 1, decimals: 0, unit: 'px' },
+                nomor_surat_spacing: { min: 0, max: 30, step: 1, decimals: 0, unit: 'px' },
+                judul_bottom_spacing: { min: 0, max: 40, step: 1, decimals: 0, unit: 'px' },
+                dasar_top_spacing: { min: 0, max: 30, step: 1, decimals: 0, unit: 'px' },
+                dasar_item_spacing: { min: 0, max: 20, step: 1, decimals: 0, unit: 'px' },
+                dasar_bottom_spacing: { min: 0, max: 30, step: 1, decimals: 0, unit: 'px' },
+                memerintahkan_spacing: { min: 0, max: 30, step: 1, decimals: 0, unit: 'px' },
+                pegawai_top_spacing: { min: 0, max: 30, step: 1, decimals: 0, unit: 'px' },
+                pegawai_gap_spacing: { min: 0, max: 35, step: 1, decimals: 0, unit: 'px' },
+                pegawai_line_spacing: { min: 0, max: 15, step: 1, decimals: 0, unit: 'px' },
+                untuk_top_spacing: { min: 0, max: 30, step: 1, decimals: 0, unit: 'px' },
+                untuk_item_spacing: { min: 0, max: 20, step: 1, decimals: 0, unit: 'px' },
+                untuk_bottom_spacing: { min: 0, max: 30, step: 1, decimals: 0, unit: 'px' },
+                ttd_offset: { min: -20, max: 80, step: 1, decimals: 0, unit: 'px' },
+                ttd_x: { min: -50, max: 50, step: 1, decimals: 0, unit: 'px' },
+                ttd_date_to_jabatan: { min: 0, max: 25, step: 1, decimals: 0, unit: 'px' },
+                ttd_space_height: { min: 20, max: 120, step: 2, decimals: 0, unit: 'px' },
+                ttd_name_nip_spacing: { min: 0, max: 25, step: 1, decimals: 0, unit: 'px' }
             };
             const KEYS = Object.keys(STEP_CONFIG);
             const frame = document.getElementById('pdfPreviewFrame');
@@ -2372,6 +2609,7 @@ try {
 
             function clamp(key, value) {
                 const cfg = STEP_CONFIG[key];
+                if (!cfg) return Number(value);
                 value = Number(value);
                 if (!isFinite(value)) return Number(DEFAULTS[key] || 0);
                 value = Math.min(cfg.max, Math.max(cfg.min, value));
@@ -2380,8 +2618,24 @@ try {
 
             function formatValue(key, value) {
                 const cfg = STEP_CONFIG[key];
+                if (!cfg) return String(value);
                 return Number(value).toFixed(cfg.decimals);
             }
+
+            // Accordion toggle click handlers
+            document.querySelectorAll('.layout-accordion-btn').forEach(function (btn) {
+                btn.addEventListener('click', function () {
+                    const targetId = btn.dataset.target;
+                    const content = document.getElementById(targetId);
+                    const icon = btn.querySelector('.layout-accordion-icon');
+                    if (content) {
+                        const isHidden = content.classList.toggle('hidden');
+                        if (icon) {
+                            icon.classList.toggle('bx-rotate-180', !isHidden);
+                        }
+                    }
+                });
+            });
 
             // Prioritas 1: parameter di URL.
             const urlParams = new URLSearchParams(window.location.search);
@@ -2553,8 +2807,6 @@ try {
 
             if (downloadBtn) {
                 downloadBtn.addEventListener('click', function () {
-                    // Pastikan parameter terbaru sudah masuk ke href sebelum browser
-                    // memulai unduhan (jika masih ada debounce yang tertunda).
                     if (debounceTimer) {
                         clearTimeout(debounceTimer);
                         applyLayout();
@@ -2625,17 +2877,34 @@ try {
             const autoFit = document.getElementById('layoutAutoFit');
             if (autoFit) {
                 autoFit.addEventListener('click', function () {
+                    // Skala kompresi proporsional agar dokumen pas 1 halaman
                     state.margin_top = 8;
                     state.margin_bottom = 8;
                     state.margin_left = 15;
                     state.margin_right = 15;
-                    state.font_size = 9;
+                    state.font_size = 9.5;
                     state.line_height = 1.0;
-                    state.kop_offset = 0;
-                    state.section_spacing = 0;
-                    state.ttd_offset = 0;
+                    state.kop_bottom_spacing = 4;
+                    state.judul_top_spacing = -5;
+                    state.nomor_surat_spacing = 2;
+                    state.judul_bottom_spacing = 4;
+                    state.dasar_top_spacing = 3;
+                    state.dasar_item_spacing = 1;
+                    state.dasar_bottom_spacing = 4;
+                    state.memerintahkan_spacing = 4;
+                    state.pegawai_top_spacing = 3;
+                    state.pegawai_gap_spacing = 4;
+                    state.pegawai_line_spacing = 1;
+                    state.untuk_top_spacing = 3;
+                    state.untuk_item_spacing = 1;
+                    state.untuk_bottom_spacing = 5;
+                    state.ttd_offset = 4;
                     state.ttd_x = 0;
+                    state.ttd_date_to_jabatan = 2;
+                    state.ttd_space_height = 40;
+                    state.ttd_name_nip_spacing = 2;
                     state.lock_ttd = 1;
+
                     markActive();
                     syncUi();
                     if (debounceTimer) clearTimeout(debounceTimer);
@@ -2689,7 +2958,6 @@ try {
 
             syncUi();
 
-            // Jika konfigurasi dipulihkan dari localStorage, langsung render ulang.
             if (restoredFromStorage) {
                 applyLayout();
             }
