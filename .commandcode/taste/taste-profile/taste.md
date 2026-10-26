@@ -1,7 +1,10 @@
 # Taste Profile
 - Communicates in Indonesian and expects replies, UI copy, and code comments in Indonesian (mixed technical English terms are fine). Confidence: 0.9
 - Gives long, highly structured specs (numbered sections, explicit CSS values, exact button labels) and expects them implemented literally rather than reinterpreted. Confidence: 0.8
-- Verifies work by pointing at concrete visual/interaction symptoms (e.g. "double scrollbar", "teks saling menimpa") and wants those symptoms eliminated at the root, not patched cosmetically. Confidence: 0.6
+- Verifies work by pointing at concrete visual/interaction symptoms (e.g. "double scrollbar", "teks saling menimpa", a screenshot of cramped spacing) and wants those symptoms eliminated at the root, not patched cosmetically. Confidence: 0.75
+- Reports bugs as short, colloquial symptom questions ("kenapa ya gak bisa setting ...") and expects the agent to investigate the real cause, verify with tests/rendered output, and explain the root cause rather than ask for more details. Confidence: 0.7
+- Every exposed control must actually work: a slider/toggle whose value silently has no effect on the generated output counts as a bug to be fixed (correct detection of the target element, collapse interfering spacing, make the parameter the sole driver). Confidence: 0.65
+- Expects output to look correct out of the box: default/opening state must already be well-spaced and clean, so the user should not have to manually drag sliders or toggle options to get an acceptable result. Confidence: 0.7
 - When refactoring UI, explicitly requires preserving existing PHP variables, backend endpoints, and data-persistence logic — change structure/HTML/CSS/JS, never the server-side contract. Confidence: 0.85
 - Prefers refactoring an existing file/flow in place over introducing parallel new implementations. Confidence: 0.6
 - Hates nested/double scrollbars: wants a fixed full-viewport app shell (`height: calc(100vh - navbar)`, `overflow: hidden`) with exactly one scrolling region per panel. Confidence: 0.75

@@ -779,6 +779,7 @@ function spt_normalize_docx($docxPath)
 
     $titleIndex = null;
     $numberIndex = null;
+    $awaitingNumber = false;
     foreach ($paragraphs as $index => $paragraph) {
         $text = spt_layout_paragraph_text($paragraph);
         if ($text === '') {
@@ -786,10 +787,28 @@ function spt_normalize_docx($docxPath)
         }
         if ($titleIndex === null && stripos($text, 'SURAT TUGAS') !== false) {
             $titleIndex = $index;
+            if (preg_match('/SURAT\s+TUGAS.*?Nomor\s*:/isu', $text)) {
+                $numberIndex = $index;
+            } else {
+                $awaitingNumber = true;
+            }
             continue;
         }
-        if ($titleIndex !== null && $numberIndex === null && stripos($text, 'Nomor') !== false && $index <= $titleIndex + 3) {
-            $numberIndex = $index;
+        if ($awaitingNumber) {
+            $awaitingNumber = false;
+            if (stripos($text, 'Nomor') !== false) {
+                $numberIndex = $index;
+            }
+        }
+    }
+
+    // Rapatkan paragraf kosong antara judul dan nomor agar jarak benar-benar
+    // dikendalikan oleh parameter nomor_surat_spacing.
+    if ($titleIndex !== null && $numberIndex !== null && $numberIndex > $titleIndex) {
+        for ($i = $titleIndex + 1; $i < $numberIndex; $i++) {
+            if (isset($paragraphs[$i]) && spt_layout_paragraph_text($paragraphs[$i]) === '') {
+                spt_layout_collapse_paragraph($paragraphs[$i], $document);
+            }
         }
     }
 
@@ -889,18 +908,29 @@ function spt_normalize_docx($docxPath)
         }
     }
 
+    $sameHeadingParagraph = ($titleIndex !== null && $numberIndex === $titleIndex);
+    $headingIndices = [];
     foreach ([$titleIndex, $numberIndex] as $index) {
-        if ($index === null || !isset($paragraphs[$index])) {
+        if ($index === null || in_array($index, $headingIndices, true)) {
+            continue;
+        }
+        $headingIndices[] = $index;
+    }
+
+    foreach ($headingIndices as $index) {
+        if (!isset($paragraphs[$index])) {
             continue;
         }
         $paragraph = $paragraphs[$index];
         $spacing = spt_layout_spacing($paragraph, $document);
-        $currentLine = $spacing->hasAttributeNS($ns, 'line') ? (int)$spacing->getAttributeNS($ns, 'line') : 0;
         $safeLine = spt_layout_heading_line_twips($paragraph, 1.3);
-        if ($currentLine < $safeLine) {
-            $spacing->setAttributeNS($ns, 'w:line', (string)$safeLine);
-            $spacing->setAttributeNS($ns, 'w:lineRule', 'auto');
+        if ($sameHeadingParagraph) {
+            $safeLine += 60;
         }
+        // Set tepat agar line-height template yang besar tidak mendominasi
+        // jarak antara judul dan nomor.
+        $spacing->setAttributeNS($ns, 'w:line', (string)$safeLine);
+        $spacing->setAttributeNS($ns, 'w:lineRule', 'auto');
         foreach (['before', 'after'] as $attribute) {
             if ($spacing->hasAttributeNS($ns, $attribute) && (int)$spacing->getAttributeNS($ns, $attribute) < 0) {
                 $spacing->setAttributeNS($ns, 'w:' . $attribute, '0');
@@ -908,11 +938,12 @@ function spt_normalize_docx($docxPath)
         }
     }
 
-    if ($numberIndex !== null && isset($paragraphs[$numberIndex])) {
+    if ($numberIndex !== null && $numberIndex !== $titleIndex && isset($paragraphs[$numberIndex])) {
         $spacing = spt_layout_spacing($paragraphs[$numberIndex], $document);
-        $currentBefore = $spacing->hasAttributeNS($ns, 'before') ? (int)$spacing->getAttributeNS($ns, 'before') : 0;
-        if ($currentBefore < 60) {
-            $spacing->setAttributeNS($ns, 'w:before', '60');
+        $spacing->setAttributeNS($ns, 'w:before', '60');
+        if ($titleIndex !== null && isset($paragraphs[$titleIndex])) {
+            $titleSpacing = spt_layout_spacing($paragraphs[$titleIndex], $document);
+            $titleSpacing->setAttributeNS($ns, 'w:after', '0');
         }
     }
 
@@ -1068,6 +1099,7 @@ function spt_layout_apply_to_docx($docxPath, array $settings)
         $ttdStart = null;
         $ttdEnd = null;
 
+        $awaitingNomor = false;
         foreach ($paragraphs as $index => $paragraph) {
             $text = spt_layout_paragraph_text($paragraph);
             if ($text === '') {
@@ -1076,11 +1108,19 @@ function spt_layout_apply_to_docx($docxPath, array $settings)
 
             if ($idxJudul === null && stripos($text, 'SURAT TUGAS') !== false) {
                 $idxJudul = $index;
+                if (preg_match('/SURAT\s+TUGAS.*?Nomor\s*:/isu', $text)) {
+                    $idxNomor = $index;
+                } else {
+                    $awaitingNomor = true;
+                }
                 continue;
             }
 
-            if ($idxJudul !== null && $idxNomor === null && stripos($text, 'Nomor') !== false && $index <= $idxJudul + 3) {
-                $idxNomor = $index;
+            if ($awaitingNomor) {
+                $awaitingNomor = false;
+                if (stripos($text, 'Nomor') !== false) {
+                    $idxNomor = $index;
+                }
                 continue;
             }
 
@@ -1189,19 +1229,30 @@ function spt_layout_apply_to_docx($docxPath, array $settings)
         // Judul "SURAT TUGAS" dan "Nomor" harus selalu punya line-height aman
         // agar tidak saling menimpa meskipun jarak antar keduanya disetel minimum.
         $headingMultiplier = max(1.3, (float)($settings['line_height'] ?? 1.0));
+        $sameHeadingParagraph = ($idxJudul !== null && $idxNomor === $idxJudul);
+        $headingGapTwips = spt_layout_px_to_twips($settings['nomor_surat_spacing'] ?? 4);
+        $headingIndices = [];
         foreach ([$idxJudul, $idxNomor] as $idxHeading) {
-            if ($idxHeading === null || !isset($paragraphs[$idxHeading])) {
+            if ($idxHeading === null || in_array($idxHeading, $headingIndices, true)) {
+                continue;
+            }
+            $headingIndices[] = $idxHeading;
+        }
+        foreach ($headingIndices as $idxHeading) {
+            if (!isset($paragraphs[$idxHeading])) {
                 continue;
             }
             $headingSpacing = spt_layout_spacing($paragraphs[$idxHeading], $document);
-            $currentLine = $headingSpacing->hasAttributeNS($ns, 'line')
-                ? (int)$headingSpacing->getAttributeNS($ns, 'line')
-                : 0;
             $headingLineTwips = spt_layout_heading_line_twips($paragraphs[$idxHeading], $headingMultiplier);
-            if ($currentLine < $headingLineTwips) {
-                $headingSpacing->setAttributeNS($ns, 'w:line', (string)$headingLineTwips);
-                $headingSpacing->setAttributeNS($ns, 'w:lineRule', 'auto');
+            // Jika judul & nomor berada di paragraf yang sama (soft line break),
+            // line spacing adalah satu-satunya pengendali jarak keduanya.
+            if ($sameHeadingParagraph) {
+                $headingLineTwips += $headingGapTwips;
             }
+            // Set tepat (bukan hanya minimum) agar line-height template yang
+            // terlalu besar tidak mendominasi jarak judul ke nomor.
+            $headingSpacing->setAttributeNS($ns, 'w:line', (string)$headingLineTwips);
+            $headingSpacing->setAttributeNS($ns, 'w:lineRule', 'auto');
         }
 
         // 3. BLOK DASAR
