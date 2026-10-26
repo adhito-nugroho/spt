@@ -35,11 +35,13 @@ if ($html === false) {
     // Check if accordion IDs are in the HTML
     $checks = [
         'acc-global',
-        'acc-kop-judul',
+        'acc-kop',
+        'acc-judul',
         'acc-dasar',
         'acc-pegawai',
         'acc-untuk',
         'acc-ttd',
+        'kop_line_spacing',
         'kop_bottom_spacing',
         'pegawai_gap_spacing',
         'ttd_space_height'

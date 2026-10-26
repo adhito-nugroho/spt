@@ -262,6 +262,7 @@ function spt_layout_default_values()
         'margin_right' => 20,
         'font_size' => 11,
         'line_height' => 1.0,
+        'kop_line_spacing' => 0,
         'kop_bottom_spacing' => 10,
         'judul_top_spacing' => 0,
         'nomor_surat_spacing' => 4,
@@ -294,6 +295,7 @@ function spt_layout_ranges()
         'margin_right' => [10, 40, 0.5],
         'font_size' => [9, 13, 0.5],
         'line_height' => [1.0, 2.0, 0.05],
+        'kop_line_spacing' => [0, 20, 1],
         'kop_bottom_spacing' => [0, 50, 1],
         'judul_top_spacing' => [-15, 40, 1],
         'nomor_surat_spacing' => [2, 30, 1],
@@ -1182,6 +1184,24 @@ function spt_layout_apply_to_docx($docxPath, array $settings)
 
         // 1. BLOK KOP SURAT
         $kopBottomTwips = spt_layout_px_to_twips($settings['kop_bottom_spacing'] ?? 10);
+        $kopLineTwips = spt_layout_px_to_twips($settings['kop_line_spacing'] ?? 0);
+
+        // Kerapatan baris di dalam kop (0 = ikuti template).
+        if ($kopLineTwips > 0 && $idxJudul !== null) {
+            for ($k = 0; $k < $idxJudul; $k++) {
+                if (!isset($paragraphs[$k]) || spt_layout_paragraph_text($paragraphs[$k]) === '') {
+                    continue;
+                }
+                $spacing = spt_layout_spacing($paragraphs[$k], $document);
+                $currentLine = $spacing->hasAttributeNS($ns, 'line')
+                    ? (int)$spacing->getAttributeNS($ns, 'line')
+                    : 0;
+                $baseLine = max($currentLine, spt_layout_heading_line_twips($paragraphs[$k], 1.0));
+                $spacing->setAttributeNS($ns, 'w:line', (string)($baseLine + $kopLineTwips));
+                $spacing->setAttributeNS($ns, 'w:lineRule', 'auto');
+            }
+        }
+
         $idxKopEnd = $idxJudul !== null ? max(0, $idxJudul - 1) : null;
         if ($idxKopEnd !== null && isset($paragraphs[$idxKopEnd])) {
             $spacing = spt_layout_spacing($paragraphs[$idxKopEnd], $document);
@@ -1373,7 +1393,20 @@ function spt_layout_apply_to_docx($docxPath, array $settings)
             $untukItemTwips = spt_layout_px_to_twips($settings['untuk_item_spacing'] ?? 3);
             $untukBottomTwips = spt_layout_px_to_twips($settings['untuk_bottom_spacing'] ?? 10);
 
-            $endUntuk = $ttdStart !== null ? max($idxUntuk, $ttdStart - 1) : $paragraphCount - 1;
+            $limitUntuk = $ttdStart !== null ? max($idxUntuk, $ttdStart - 1) : $paragraphCount - 1;
+
+            // Butir terakhir yang benar-benar berisi teks. Paragraf kosong di
+            // ekor blok tidak boleh "mencuri" jarak bawah.
+            $endUntuk = $idxUntuk;
+            for ($i = $limitUntuk; $i >= $idxUntuk; $i--) {
+                if (isset($paragraphs[$i]) && spt_layout_paragraph_text($paragraphs[$i]) !== '') {
+                    $endUntuk = $i;
+                    break;
+                }
+            }
+
+            // Blok UNTUK mencakup paragraf label ("UNTUK :") beserta butir
+            // pertama di sebelahnya, lalu seluruh butir tugas berikutnya.
             for ($i = $idxUntuk; $i <= $endUntuk; $i++) {
                 if (!isset($paragraphs[$i])) continue;
                 if (spt_layout_paragraph_text($paragraphs[$i]) === '') {
@@ -1599,6 +1632,7 @@ function spt_layout_build_css(array $settings)
     $font = number_format((float)$settings['font_size'], 2, '.', '');
     $line = number_format((float)$settings['line_height'], 2, '.', '');
 
+    $kopLine = max(0, (int)($settings['kop_line_spacing'] ?? 0));
     $kopBottom = max(0, (int)($settings['kop_bottom_spacing'] ?? 10));
     $judulTop = (int)($settings['judul_top_spacing'] ?? 0);
     $nomorSpacing = max(0, (int)($settings['nomor_surat_spacing'] ?? 4));
@@ -1624,6 +1658,10 @@ function spt_layout_build_css(array $settings)
     $css .= 'body { font-size: ' . $font . 'pt; line-height: ' . $line . '; }' . PHP_EOL;
     $css .= 'p, td, th, li, span, h1, h2, h3, h4, h5, h6 { font-size: ' . $font . 'pt !important; line-height: ' . $line . ' !important; }' . PHP_EOL;
     $css .= 'table td, table th { vertical-align: top !important; }' . PHP_EOL;
+    if ($kopLine > 0) {
+        $kopLineHeightPt = ((float)$settings['font_size'] * (float)$settings['line_height']) + ($kopLine * 0.75);
+        $css .= '.spt-kop-line, .spt-kop p, .spt-kop td { line-height: ' . number_format($kopLineHeightPt, 2, '.', '') . 'pt !important; }' . PHP_EOL;
+    }
     $css .= 'table.spt-kop, .spt-kop { margin-bottom: ' . $kopBottom . 'px !important; }' . PHP_EOL;
     $css .= 'h1.spt-title, .spt-title { display: block !important; margin-top: ' . $judulTop . 'px !important; margin-bottom: 0 !important; line-height: 1.3 !important; }' . PHP_EOL;
     $css .= 'h5.spt-nomor, .spt-nomor { display: block !important; margin-top: ' . $nomorSpacing . 'px !important; margin-bottom: ' . $judulBottom . 'px !important; line-height: 1.3 !important; }' . PHP_EOL;
@@ -1688,6 +1726,13 @@ function spt_layout_inject_html($html, array $settings)
             }
 
             $classes = [];
+            if (stripos($text, 'PEMERINTAH PROVINSI') !== false
+                || stripos($text, 'DINAS KEHUTANAN') !== false
+                || (stripos($text, 'CABANG DINAS') !== false && stripos($text, 'Kepala') === false)
+                || stripos($text, 'Jalan Hayam Wuruk') !== false
+                || stripos($text, 'Telepon (0353)') !== false) {
+                $classes[] = 'spt-kop-line';
+            }
             if (stripos($text, 'SURAT TUGAS') !== false) {
                 $classes[] = 'spt-title';
             }
@@ -2905,19 +2950,36 @@ main > .max-w-7xl { max-width: none !important; margin: 0 !important; height: 10
                         </div>
                     </div>
 
-                    <div class="spt-acc" data-keys="kop_bottom_spacing judul_top_spacing nomor_surat_spacing judul_bottom_spacing">
-                        <button type="button" class="layout-accordion-btn spt-acc-head" data-target="acc-kop-judul" aria-expanded="false">
+                    <div class="spt-acc" data-keys="kop_line_spacing kop_bottom_spacing">
+                        <button type="button" class="layout-accordion-btn spt-acc-head" data-target="acc-kop" aria-expanded="false">
                             <span style="display:flex;align-items:center;gap:6px;min-width:0;">
-                                <i class="bx bx-heading" style="color:#059669;font-size:13px;"></i>
-                                <span>Kop &amp; Judul Surat</span>
+                                <i class="bx bx-image" style="color:#059669;font-size:13px;"></i>
+                                <span>Kop Surat</span>
                                 <span class="spt-acc-dot spt-hidden" data-acc-dot></span>
                                 <span class="spt-acc-count spt-hidden" data-acc-count></span>
                             </span>
                             <i class="bx bx-chevron-down spt-acc-icon" style="font-size:14px;"></i>
                         </button>
-                        <div id="acc-kop-judul" class="layout-accordion-content spt-acc-body is-collapsed">
+                        <div id="acc-kop" class="layout-accordion-content spt-acc-body is-collapsed">
                             <div style="display:flex;flex-direction:column;gap:10px;">
-                                <?= spt_layout_render_control('kop_bottom_spacing', 'Jarak Bawah Kop', $layout_initial, 'px') ?>
+                                <?= spt_layout_render_control('kop_line_spacing', 'Kerapatan Baris Kop', $layout_initial, 'px', 'Tambahan jarak antar baris di dalam kop (0 = ikuti template).') ?>
+                                <?= spt_layout_render_control('kop_bottom_spacing', 'Jarak Bawah Kop', $layout_initial, 'px', 'Jarak dari baris terakhir kop ke judul SURAT TUGAS.') ?>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="spt-acc" data-keys="judul_top_spacing nomor_surat_spacing judul_bottom_spacing">
+                        <button type="button" class="layout-accordion-btn spt-acc-head" data-target="acc-judul" aria-expanded="false">
+                            <span style="display:flex;align-items:center;gap:6px;min-width:0;">
+                                <i class="bx bx-heading" style="color:#059669;font-size:13px;"></i>
+                                <span>Judul &amp; Nomor Surat</span>
+                                <span class="spt-acc-dot spt-hidden" data-acc-dot></span>
+                                <span class="spt-acc-count spt-hidden" data-acc-count></span>
+                            </span>
+                            <i class="bx bx-chevron-down spt-acc-icon" style="font-size:14px;"></i>
+                        </button>
+                        <div id="acc-judul" class="layout-accordion-content spt-acc-body is-collapsed">
+                            <div style="display:flex;flex-direction:column;gap:10px;">
                                 <?= spt_layout_render_control('judul_top_spacing', 'Spasi Atas SURAT TUGAS', $layout_initial, 'px') ?>
                                 <?= spt_layout_render_control('nomor_surat_spacing', 'Jarak Judul ke Nomor', $layout_initial, 'px', 'Minimum 2 px; line-height judul dikunci 1.3 agar tidak bertumpuk.') ?>
                                 <?= spt_layout_render_control('judul_bottom_spacing', 'Jarak Sesudah Nomor', $layout_initial, 'px') ?>
@@ -2968,17 +3030,18 @@ main > .max-w-7xl { max-width: none !important; margin: 0 !important; height: 10
                         <button type="button" class="layout-accordion-btn spt-acc-head" data-target="acc-untuk" aria-expanded="false">
                             <span style="display:flex;align-items:center;gap:6px;min-width:0;">
                                 <i class="bx bx-task" style="color:#059669;font-size:13px;"></i>
-                                <span>Blok Untuk</span>
+                                <span>Blok UNTUK &amp; Butir Tugas</span>
                                 <span class="spt-acc-dot spt-hidden" data-acc-dot></span>
                                 <span class="spt-acc-count spt-hidden" data-acc-count></span>
                             </span>
                             <i class="bx bx-chevron-down spt-acc-icon" style="font-size:14px;"></i>
                         </button>
                         <div id="acc-untuk" class="layout-accordion-content spt-acc-body is-collapsed">
+                            <p class="spt-help" style="margin-bottom:8px;">Berlaku untuk label <strong>UNTUK</strong> dan butir <strong>&ldquo;1. Melaksanakan&hellip;&rdquo;</strong> di sebelahnya, termasuk butir-butir berikutnya.</p>
                             <div style="display:flex;flex-direction:column;gap:10px;">
-                                <?= spt_layout_render_control('untuk_top_spacing', 'Jarak Sebelum UNTUK', $layout_initial, 'px') ?>
-                                <?= spt_layout_render_control('untuk_item_spacing', 'Kerapatan Butir Tugas', $layout_initial, 'px') ?>
-                                <?= spt_layout_render_control('untuk_bottom_spacing', 'Jarak Sesudah Tugas', $layout_initial, 'px') ?>
+                                <?= spt_layout_render_control('untuk_top_spacing', 'Jarak Sebelum Blok UNTUK', $layout_initial, 'px') ?>
+                                <?= spt_layout_render_control('untuk_item_spacing', 'Kerapatan Antar Butir Tugas', $layout_initial, 'px', 'Termasuk jarak dari butir pertama di samping label UNTUK.') ?>
+                                <?= spt_layout_render_control('untuk_bottom_spacing', 'Jarak Sesudah Blok Tugas', $layout_initial, 'px') ?>
                             </div>
                         </div>
                     </div>
@@ -3098,6 +3161,7 @@ main > .max-w-7xl { max-width: none !important; margin: 0 !important; height: 10
         margin_right: { min: 10, max: 40, step: 0.5, decimals: 1, unit: 'mm' },
         font_size: { min: 9, max: 13, step: 0.5, decimals: 1, unit: 'pt' },
         line_height: { min: 1.0, max: 2.0, step: 0.05, decimals: 2, unit: '×' },
+        kop_line_spacing: { min: 0, max: 20, step: 1, decimals: 0, unit: 'px' },
         kop_bottom_spacing: { min: 0, max: 50, step: 1, decimals: 0, unit: 'px' },
         judul_top_spacing: { min: -15, max: 40, step: 1, decimals: 0, unit: 'px' },
         nomor_surat_spacing: { min: 2, max: 30, step: 1, decimals: 0, unit: 'px' },
@@ -3121,7 +3185,7 @@ main > .max-w-7xl { max-width: none !important; margin: 0 !important; height: 10
     const KEYS = Object.keys(STEP_CONFIG);
     const AUTOFIT_VALUES = {
         margin_top: 8, margin_bottom: 8, margin_left: 15, margin_right: 15,
-        font_size: 9.5, line_height: 1.0, kop_bottom_spacing: 4,
+        font_size: 9.5, line_height: 1.0, kop_line_spacing: 0, kop_bottom_spacing: 4,
         judul_top_spacing: -5, nomor_surat_spacing: 2, judul_bottom_spacing: 4,
         dasar_top_spacing: 3, dasar_item_spacing: 1, dasar_bottom_spacing: 4,
         memerintahkan_spacing: 4, pegawai_top_spacing: 3, pegawai_gap_spacing: 4,

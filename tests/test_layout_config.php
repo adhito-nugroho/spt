@@ -8,7 +8,7 @@ $ranges = spt_layout_ranges();
 $expectedKeys = [
     'margin_top', 'margin_bottom', 'margin_left', 'margin_right',
     'font_size', 'line_height',
-    'kop_bottom_spacing',
+    'kop_line_spacing', 'kop_bottom_spacing',
     'judul_top_spacing', 'nomor_surat_spacing', 'judul_bottom_spacing',
     'dasar_top_spacing', 'dasar_item_spacing', 'dasar_bottom_spacing',
     'memerintahkan_spacing',

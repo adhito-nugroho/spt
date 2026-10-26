@@ -37,6 +37,7 @@ $ranges = [
     'margin_right' => [10, 40, 0.5],
     'font_size' => [9, 13, 0.5],
     'line_height' => [1.0, 2.0, 0.05],
+    'kop_line_spacing' => [0, 20, 1],
     'kop_bottom_spacing' => [0, 50, 1],
     'judul_top_spacing' => [-15, 40, 1],
     'nomor_surat_spacing' => [2, 30, 1],
