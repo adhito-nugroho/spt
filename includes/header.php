@@ -86,7 +86,7 @@ $userInitial = function_exists('mb_substr')
 
     <div class="flex h-screen overflow-hidden">
         <!-- Sidebar -->
-        <aside class="w-64 bg-white border-r border-gray-200 hidden md:flex flex-col z-10">
+        <aside id="mainSidebar" class="w-64 bg-white border-r border-gray-200 hidden md:flex flex-col z-10">
             <div class="h-16 flex items-center px-6 border-b border-gray-100">
                 <a href="../" class="flex items-center gap-2 text-indigo-600 font-bold text-xl tracking-tight">
                     <img src="../assets/img/logo-jawa-timur.svg" alt="Lambang Provinsi Jawa Timur" class="h-9 w-auto shrink-0 object-contain" decoding="async">

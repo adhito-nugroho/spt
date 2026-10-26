@@ -1,0 +1,12 @@
+# Taste Profile
+- Communicates in Indonesian and expects replies, UI copy, and code comments in Indonesian (mixed technical English terms are fine). Confidence: 0.9
+- Gives long, highly structured specs (numbered sections, explicit CSS values, exact button labels) and expects them implemented literally rather than reinterpreted. Confidence: 0.8
+- Verifies work by pointing at concrete visual/interaction symptoms (e.g. "double scrollbar", "teks saling menimpa") and wants those symptoms eliminated at the root, not patched cosmetically. Confidence: 0.6
+- When refactoring UI, explicitly requires preserving existing PHP variables, backend endpoints, and data-persistence logic — change structure/HTML/CSS/JS, never the server-side contract. Confidence: 0.85
+- Prefers refactoring an existing file/flow in place over introducing parallel new implementations. Confidence: 0.6
+- Hates nested/double scrollbars: wants a fixed full-viewport app shell (`height: calc(100vh - navbar)`, `overflow: hidden`) with exactly one scrolling region per panel. Confidence: 0.75
+- Wants primary actions (Apply / Save as default) in a sticky footer that can never scroll out of view, with header/body/footer split via flex. Confidence: 0.7
+- Prefers compact, information-dense inspectors: 2-column grids, editable number inputs two-way bound to sliders, micro reset buttons (↺) per parameter, and keyboard shortcuts (Ctrl/Cmd + Enter). Confidence: 0.7
+- Expects accurate UI state, not decorative state: buttons only look "active" when truly active, plus loading spinners, dirty/unsaved indicators, and status badges with amber = warning / emerald = success semantics. Confidence: 0.7
+- Likes replacing static helper banners with contextual toolbars carrying back-link, document identity, status badges, and primary actions outside the preview frame. Confidence: 0.6
+- Cares about output typography correctness: no overlapping text blocks (explicit `display:block` + safe `line-height`), safe minimum values on spacing sliders, `vertical-align: top` in data tables, and automatic cleanup of typos and duplicated words ("tentang tentang"). Confidence: 0.7

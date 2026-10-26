@@ -42,4 +42,20 @@ if ($norm['kop_bottom_spacing'] != 50 || $norm['judul_top_spacing'] != -15 || $n
     exit(1);
 }
 
+// Jarak judul ke nomor tidak boleh turun ke 0 agar teks tidak bertumpuk.
+if ($ranges['nomor_surat_spacing'][0] < 2) {
+    fwrite(STDERR, "FAIL: nomor_surat_spacing minimum must be at least 2\n");
+    exit(1);
+}
+
+// Pembersihan kata berulang dan typo kop surat.
+if (spt_clean_repeated_words('Peraturan tentang tentang Anggaran') !== 'Peraturan tentang Anggaran') {
+    fwrite(STDERR, "FAIL: repeated word cleanup failed\n");
+    exit(1);
+}
+if (spt_fix_common_typos('Bojongeoro Telepn') !== 'Bojonegoro Telepon') {
+    fwrite(STDERR, "FAIL: typo cleanup failed\n");
+    exit(1);
+}
+
 echo "PASS: Layout config test passed.\n";

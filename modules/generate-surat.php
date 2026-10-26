@@ -296,7 +296,7 @@ function spt_layout_ranges()
         'line_height' => [1.0, 2.0, 0.05],
         'kop_bottom_spacing' => [0, 50, 1],
         'judul_top_spacing' => [-15, 40, 1],
-        'nomor_surat_spacing' => [0, 30, 1],
+        'nomor_surat_spacing' => [2, 30, 1],
         'judul_bottom_spacing' => [0, 40, 1],
         'dasar_top_spacing' => [0, 30, 1],
         'dasar_item_spacing' => [0, 20, 1],
@@ -879,7 +879,7 @@ function spt_layout_apply_to_docx($docxPath, array $settings)
             $spacing = spt_layout_spacing($paragraphs[$idxJudul], $document);
             $effectiveJudulTop = max(0, $kopBottomTwips + $judulTopTwips);
             $spacing->setAttributeNS($ns, 'w:before', (string)$effectiveJudulTop);
-            $spacing->setAttributeNS($ns, 'w:after', (string)$nomorTwips);
+            $spacing->setAttributeNS($ns, 'w:after', '0');
         }
         if ($idxJudul !== null && $idxNomor !== null) {
             for ($k = $idxJudul + 1; $k < $idxNomor; $k++) {
@@ -889,8 +889,10 @@ function spt_layout_apply_to_docx($docxPath, array $settings)
             }
         }
         if ($idxNomor !== null && isset($paragraphs[$idxNomor])) {
+            $nomorTwips = spt_layout_px_to_twips($settings['nomor_surat_spacing'] ?? 4);
             $judulBottomTwips = spt_layout_px_to_twips($settings['judul_bottom_spacing'] ?? 10);
             $spacing = spt_layout_spacing($paragraphs[$idxNomor], $document);
+            $spacing->setAttributeNS($ns, 'w:before', (string)$nomorTwips);
             $spacing->setAttributeNS($ns, 'w:after', (string)$judulBottomTwips);
             if ($idxDasar !== null) {
                 for ($k = $idxNomor + 1; $k < $idxDasar; $k++) {
@@ -898,6 +900,23 @@ function spt_layout_apply_to_docx($docxPath, array $settings)
                         spt_layout_collapse_paragraph($paragraphs[$k], $document);
                     }
                 }
+            }
+        }
+
+        // Judul "SURAT TUGAS" dan "Nomor" harus selalu punya line-height aman
+        // agar tidak saling menimpa meskipun jarak antar keduanya disetel minimum.
+        $headingLineTwips = (int)round(max(1.3, (float)($settings['line_height'] ?? 1.0)) * 240);
+        foreach ([$idxJudul, $idxNomor] as $idxHeading) {
+            if ($idxHeading === null || !isset($paragraphs[$idxHeading])) {
+                continue;
+            }
+            $headingSpacing = spt_layout_spacing($paragraphs[$idxHeading], $document);
+            $currentLine = $headingSpacing->hasAttributeNS($ns, 'line')
+                ? (int)$headingSpacing->getAttributeNS($ns, 'line')
+                : 0;
+            if ($currentLine < $headingLineTwips) {
+                $headingSpacing->setAttributeNS($ns, 'w:line', (string)$headingLineTwips);
+                $headingSpacing->setAttributeNS($ns, 'w:lineRule', 'auto');
             }
         }
 
@@ -1117,6 +1136,31 @@ function spt_layout_apply_to_docx($docxPath, array $settings)
             }
         }
 
+        // Semua sel tabel (biodata pegawai, dasar, lampiran) rata atas agar
+        // titik dua dan nomor urut tetap sejajar di baris pertama.
+        $tcPrOrder = [
+            'cnfStyle', 'tcW', 'gridSpan', 'hMerge', 'vMerge', 'tcBorders', 'shd',
+            'noWrap', 'tcMar', 'textDirection', 'tcFitText', 'vAlign', 'hideMark',
+            'headers', 'cellIns', 'cellDel', 'cellMerge', 'tcPrChange',
+        ];
+        foreach ($xpath->query('//w:tbl//w:tc') as $cell) {
+            $tcPr = spt_layout_child($cell, 'tcPr');
+            if (!$tcPr) {
+                $tcPr = $document->createElementNS($ns, 'w:tcPr');
+                if ($cell->firstChild) {
+                    $cell->insertBefore($tcPr, $cell->firstChild);
+                } else {
+                    $cell->appendChild($tcPr);
+                }
+            }
+            $vAlign = spt_layout_child($tcPr, 'vAlign');
+            if (!$vAlign) {
+                $vAlign = $document->createElementNS($ns, 'w:vAlign');
+                spt_layout_insert_ordered($tcPr, $vAlign, $tcPrOrder);
+            }
+            $vAlign->setAttributeNS($ns, 'w:val', 'top');
+        }
+
         $styles = $stylesXml !== false ? spt_layout_load_dom($stylesXml) : null;
         if ($styles) {
             spt_layout_scale_font_sizes($styles, $factor);
@@ -1265,9 +1309,10 @@ function spt_layout_build_css(array $settings)
     $css .= '@page { margin: ' . $mt . 'mm ' . $mr . 'mm ' . $mb . 'mm ' . $ml . 'mm; }' . PHP_EOL;
     $css .= 'body { font-size: ' . $font . 'pt; line-height: ' . $line . '; }' . PHP_EOL;
     $css .= 'p, td, th, li, span, h1, h2, h3, h4, h5, h6 { font-size: ' . $font . 'pt !important; line-height: ' . $line . ' !important; }' . PHP_EOL;
+    $css .= 'table td, table th { vertical-align: top !important; }' . PHP_EOL;
     $css .= 'table.spt-kop, .spt-kop { margin-bottom: ' . $kopBottom . 'px !important; }' . PHP_EOL;
-    $css .= 'h1.spt-title, .spt-title { margin-top: ' . $judulTop . 'px !important; margin-bottom: ' . $nomorSpacing . 'px !important; }' . PHP_EOL;
-    $css .= 'h5.spt-nomor, .spt-nomor { margin-bottom: ' . $judulBottom . 'px !important; }' . PHP_EOL;
+    $css .= 'h1.spt-title, .spt-title { display: block !important; margin-top: ' . $judulTop . 'px !important; margin-bottom: 0 !important; line-height: 1.3 !important; }' . PHP_EOL;
+    $css .= 'h5.spt-nomor, .spt-nomor { display: block !important; margin-top: ' . $nomorSpacing . 'px !important; margin-bottom: ' . $judulBottom . 'px !important; line-height: 1.3 !important; }' . PHP_EOL;
     $css .= '.spt-dasar { margin-top: ' . $dasarTop . 'px !important; margin-bottom: ' . $dasarItem . 'px !important; }' . PHP_EOL;
     $css .= '.spt-dasar-last { margin-bottom: ' . $dasarBottom . 'px !important; }' . PHP_EOL;
     $css .= '.spt-memerintahkan { margin-top: ' . $memSpacing . 'px !important; margin-bottom: ' . $memSpacing . 'px !important; }' . PHP_EOL;
@@ -1293,6 +1338,9 @@ function spt_layout_build_css(array $settings)
  */
 function spt_layout_inject_html($html, array $settings)
 {
+    // Rapikan typo kop surat pada HTML sebelum CSS layout disuntikkan.
+    $html = spt_fix_common_typos($html);
+
     // Beri class spt-kop pada tabel kop surat (tabel pertama yang memuat teks kop)
     $html = preg_replace_callback(
         '/<table\b([^>]*)>(.*?)<\/table>/is',
@@ -1377,6 +1425,166 @@ function spt_layout_inject_html($html, array $settings)
         return preg_replace('/<\/head>/i', $css . '</head>', $html, 1);
     }
     return $css . $html;
+}
+
+/**
+ * Hapus kata berulang yang tidak disengaja (mis. "tentang tentang").
+ */
+function spt_clean_repeated_words($text)
+{
+    $text = (string)$text;
+    if ($text === '') {
+        return $text;
+    }
+
+    $previous = null;
+    while ($previous !== $text) {
+        $previous = $text;
+        $result = preg_replace('/\b([\p{L}]+)(\s+\1)+\b/iu', '$1', $text);
+        if ($result === null) {
+            break;
+        }
+        $text = $result;
+    }
+
+    return $text;
+}
+
+/**
+ * Perbaikan typo umum pada teks kop surat dan isi surat.
+ */
+function spt_fix_common_typos($text)
+{
+    $text = (string)$text;
+    if ($text === '') {
+        return $text;
+    }
+
+    return str_ireplace(
+        ['Bojongeoro', 'Telepn', 'Telepo n', 'Telepun'],
+        ['Bojonegoro', 'Telepon', 'Telepon', 'Telepon'],
+        $text
+    );
+}
+
+/**
+ * Perbaiki typo kop surat di dalam DOCX hasil generate (semua XML text part).
+ * Juga menangani typo yang terpecah antar-run Word.
+ */
+function spt_fix_docx_typos($docxPath)
+{
+    if (!class_exists('ZipArchive') || !is_file($docxPath)) {
+        return false;
+    }
+
+    $zip = new ZipArchive();
+    if ($zip->open($docxPath) !== true) {
+        return false;
+    }
+
+    $changed = false;
+    $parts = [];
+    for ($i = 0; $i < $zip->numFiles; $i++) {
+        $name = $zip->getNameIndex($i);
+        if (preg_match('#^word/(document|header\d*|footer\d*|footnotes|endnotes)\.xml$#i', $name)) {
+            $parts[] = $name;
+        }
+    }
+
+    // Typo yang mungkin terpecah ke beberapa run <w:t>.
+    $splitPatterns = [
+        '/B\s*(?:<[^>]+>\s*)*o\s*(?:<[^>]+>\s*)*j\s*(?:<[^>]+>\s*)*o\s*(?:<[^>]+>\s*)*n\s*(?:<[^>]+>\s*)*g\s*(?:<[^>]+>\s*)*e\s*(?:<[^>]+>\s*)*o\s*(?:<[^>]+>\s*)*r\s*(?:<[^>]+>\s*)*o/ui',
+        '/T\s*(?:<[^>]+>\s*)*e\s*(?:<[^>]+>\s*)*l\s*(?:<[^>]+>\s*)*e\s*(?:<[^>]+>\s*)*p\s*(?:<[^>]+>\s*)*n/ui',
+    ];
+
+    foreach ($parts as $name) {
+        $content = $zip->getFromName($name);
+        if ($content === false) {
+            continue;
+        }
+
+        $fixed = spt_fix_common_typos($content);
+        $splitFixed = preg_replace($splitPatterns, ['Bojonegoro', 'Telepon'], $fixed);
+        if ($splitFixed !== null) {
+            $fixed = $splitFixed;
+        }
+
+        if ($fixed !== $content) {
+            $zip->addFromString($name, $fixed);
+            $changed = true;
+        }
+    }
+
+    $zip->close();
+    return $changed;
+}
+
+/**
+ * Hitung jumlah halaman PDF secara best-effort dari isi file.
+ */
+function spt_pdf_page_count($path)
+{
+    if (!is_file($path) || !is_readable($path)) {
+        return 0;
+    }
+
+    $data = @file_get_contents($path);
+    if ($data === false || $data === '') {
+        return 0;
+    }
+
+    if (preg_match_all('/\/Type\s*\/Page[^s]/i', $data, $matches)) {
+        return count($matches[0]);
+    }
+    if (preg_match_all('/\/Count\s+(\d+)/i', $data, $matches)) {
+        return max(array_map('intval', $matches[1]));
+    }
+
+    return 0;
+}
+
+/**
+ * Render satu kontrol slider + number input + stepper untuk panel inspector.
+ */
+function spt_layout_render_control($key, $label, array $settings, $unit, $help = '')
+{
+    $ranges = spt_layout_ranges();
+    if (!isset($ranges[$key])) {
+        return '';
+    }
+
+    [$min, $max, $step] = $ranges[$key];
+    $defaults = spt_layout_default_values();
+    $default = $defaults[$key] ?? $min;
+    $value = $settings[$key] ?? $default;
+    $decimals = $step < 0.1 ? 2 : ($step < 1 ? 1 : 0);
+    $display = number_format((float)$value, $decimals, '.', '');
+    $minAttr = htmlspecialchars((string)$min, ENT_QUOTES, 'UTF-8');
+    $maxAttr = htmlspecialchars((string)$max, ENT_QUOTES, 'UTF-8');
+    $stepAttr = htmlspecialchars((string)$step, ENT_QUOTES, 'UTF-8');
+    $valueAttr = htmlspecialchars((string)$value, ENT_QUOTES, 'UTF-8');
+    $labelAttr = htmlspecialchars($label, ENT_QUOTES, 'UTF-8');
+    $unitHtml = htmlspecialchars($unit, ENT_QUOTES, 'UTF-8');
+    $helpHtml = $help !== '' ? '<p class="spt-help">' . htmlspecialchars($help, ENT_QUOTES, 'UTF-8') . '</p>' : '';
+
+    return <<<HTML
+<div class="spt-control" data-control="{$key}">
+    <div class="spt-control-head">
+        <label class="spt-control-label" for="num-{$key}">{$labelAttr}</label>
+        <button type="button" class="layout-reset spt-reset-btn" data-target="{$key}" title="Reset {$labelAttr} ke default" aria-label="Reset {$labelAttr}">&#8634;</button>
+    </div>
+    <div class="spt-control-row">
+        <button type="button" class="layout-step spt-step-btn" data-target="{$key}" data-dir="-1" aria-label="Kurangi {$labelAttr}">&minus;</button>
+        <div class="spt-number-wrap">
+            <input type="number" id="num-{$key}" class="layout-number spt-number" data-number-key="{$key}" min="{$minAttr}" max="{$maxAttr}" step="{$stepAttr}" value="{$valueAttr}">
+            <span class="spt-unit">{$unitHtml}</span>
+        </div>
+        <button type="button" class="layout-step spt-step-btn" data-target="{$key}" data-dir="1" aria-label="Tambah {$labelAttr}">+</button>
+    </div>
+    <input type="range" class="layout-range spt-range" data-layout-key="{$key}" min="{$minAttr}" max="{$maxAttr}" step="{$stepAttr}" value="{$valueAttr}" aria-label="{$labelAttr}">
+    {$helpHtml}
+</div>
+HTML;
 }
 
 if (defined('SPT_TEST_MODE')) {
@@ -2035,6 +2243,7 @@ try {
     $templateProcessor->setValue('tanggal_surat', $tanggal_surat);
 
     $dasarSurat = trim((string)($surat['dasar_surat'] ?? ''));
+    $dasarSurat = spt_clean_repeated_words(spt_fix_common_typos($dasarSurat));
     if ($dasarSurat === '') {
         // Jika dasar surat kosong, kosongkan semua placeholder terkait item dasar surat.
         $templateProcessor->setValue('dasar_surat', '');
@@ -2047,7 +2256,8 @@ try {
         $templateProcessor->setValue('dasar_surat_item', '5. ' . $dasarSurat);
     }
 
-    $templateProcessor->setValue('untuk', $surat['untuk']);
+    $untukSurat = spt_clean_repeated_words(spt_fix_common_typos((string)($surat['untuk'] ?? '')));
+    $templateProcessor->setValue('untuk', $untukSurat);
     $templateProcessor->setValue('kota_tujuan', isset($surat['kota_tujuan']) ? (string)$surat['kota_tujuan'] : '');
     $templateProcessor->setValue('waktu_pelaksanaan', $waktu_pelaksanaan);
 
@@ -2213,901 +2423,1078 @@ try {
 
         include '../includes/header.php';
         ?>
-        <div class="space-y-6">
-            <div class="flex flex-wrap items-center justify-between gap-4">
-                <div>
-                    <h2 class="text-xl font-semibold text-slate-800">Preview Surat Tugas</h2>
-                    <p class="text-sm text-slate-500 mt-1">Atur tata letak di panel kiri, lalu unduh PDF dengan hasil yang sama persis.</p>
-                </div>
-                <div class="flex flex-wrap gap-3">
-                    <a href="generate-surat.php?id=<?= $sid ?>&format=docx" class="inline-flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors">
-                        <i class="bx bx-file-blank"></i><span>Download Word (.docx)</span>
-                    </a>
-                    <a id="downloadPdfBtn" href="<?= htmlspecialchars($downloadPdfUrl) ?>" class="inline-flex items-center gap-2 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors">
-                        <i class="bx bxs-file-pdf"></i><span>Download PDF</span>
-                    </a>
-                    <a href="surat-tugas.php" class="inline-flex items-center gap-2 px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-lg transition-colors">
-                        <i class="bx bx-arrow-back"></i><span>Kembali</span>
-                    </a>
-                </div>
-            </div>
-            <?php if (!empty($template_berlaku_mulai)): ?>
-            <div class="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900 flex items-start gap-3">
-                <i class='bx bx-calendar-check text-emerald-600 text-xl mt-0.5'></i>
-                <div>
-                    <p class="font-semibold">Memakai template dasar baru (PAPBD)</p>
-                    <p>Template: <strong><?= htmlspecialchars($template_nama ?? basename($template_path)) ?></strong> — berlaku mulai <?= date('d/m/Y', strtotime($template_berlaku_mulai)) ?>, sesuai tanggal surat <?= date('d/m/Y', strtotime($surat['tanggal_surat'])) ?>.</p>
-                </div>
-            </div>
-            <?php elseif (!empty($peringatan_template_lama)): ?>
-            <div class="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 flex items-start gap-3">
-                <i class='bx bx-error text-amber-600 text-xl mt-0.5'></i>
-                <div>
-                    <p class="font-semibold">Memakai template dasar lama — perlu perhatian</p>
-                    <p>Template: <strong><?= htmlspecialchars($template_nama ?? basename($template_path)) ?></strong>. Tanggal surat (<?= date('d/m/Y', strtotime($surat['tanggal_surat'])) ?>) sudah masuk masa dasar baru PAPBD, tetapi template dasar baru untuk kombinasi kategori &ldquo;<?= htmlspecialchars($kategori_label) ?>&rdquo; tipe &ldquo;<?= htmlspecialchars($tipe_label) ?>&rdquo; belum di-upload. Segera upload di halaman Template Word dan isi kolom Berlaku Mulai<?= $cutoff_global ? ' dengan ' . date('d/m/Y', strtotime($cutoff_global)) : ' sesuai tanggal berlakunya PAPBD'; ?>.</p>
-                </div>
-            </div>
-            <?php else: ?>
-            <div class="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700 flex items-start gap-3">
-                <i class='bx bx-history text-slate-500 text-xl mt-0.5'></i>
-                <div>
-                    <p class="font-semibold">Memakai template dasar lama</p>
-                    <p>Template: <strong><?= htmlspecialchars($template_nama ?? basename($template_path)) ?></strong> — sesuai tanggal surat <?= date('d/m/Y', strtotime($surat['tanggal_surat'])) ?> (sebelum masa PAPBD).</p>
-                </div>
-            </div>
-            <?php endif; ?>
+<style>
+main { overflow: hidden !important; padding: 0 !important; }
+main > .max-w-7xl { max-width: none !important; margin: 0 !important; height: 100%; }
+.spt-app-shell { height: 100%; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
+.spt-split { display: flex; flex: 1 1 auto; min-height: 0; min-width: 0; height: 100%; overflow: hidden; background: #f1f5f9; }
+.spt-sidebar-collapsed { display: none !important; }
+.spt-hidden { display: none !important; }
 
-            <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-                <!-- Kolom kontrol (setara col-lg-4) -->
-                <div class="lg:col-span-4">
-                    <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden lg:sticky lg:top-4">
-                        <div class="flex items-start justify-between gap-3 px-4 py-3 border-b border-slate-200 bg-slate-50/60">
-                            <div>
-                                <h3 class="font-semibold text-slate-800 flex items-center gap-2">
-                                    <i class="bx bx-slider-alt text-indigo-600"></i>
-                                    Penyesuaian Tata Letak
-                                </h3>
-                                <p class="text-xs text-slate-500 mt-0.5">Geser slider atau gunakan tombol + / − untuk presisi.</p>
-                            </div>
-                            <button type="button" id="layoutToggle" class="p-1.5 rounded-lg text-slate-500 hover:bg-slate-200 transition-colors" title="Buka/tutup panel">
-                                <i class="bx bx-chevron-up text-xl" id="layoutToggleIcon"></i>
-                            </button>
-                        </div>
+.spt-inspector { width: 380px; flex: 0 0 380px; min-width: 320px; max-width: 520px; display: flex; flex-direction: column; height: 100%; min-height: 0; background: #fff; border-right: 1px solid #e2e8f0; }
+.spt-inspector-head { flex: 0 0 auto; padding: 13px 16px 11px; border-bottom: 1px solid #e2e8f0; background: #fff; }
+.spt-inspector-title { display: flex; align-items: center; gap: 7px; font-size: 15px; font-weight: 700; color: #0f172a; letter-spacing: -.01em; }
+.spt-inspector-sub { margin-top: 2px; font-size: 10.5px; line-height: 1.4; color: #64748b; }
+.spt-preset-row { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; margin-top: 9px; }
+.spt-preset-btn { position: relative; display: inline-flex; align-items: center; justify-content: center; gap: 5px; padding: 7px 8px; border-radius: 8px; border: 1px solid #e2e8f0; background: #fff; color: #334155; font-size: 10.5px; font-weight: 600; transition: .15s ease; cursor: pointer; }
+.spt-preset-btn:hover { background: #f8fafc; border-color: #cbd5e1; }
+.spt-preset-btn.is-active { border-color: #10b981; background: #ecfdf5; color: #047857; }
+.spt-preset-btn.is-loading { color: transparent !important; pointer-events: none; }
+.spt-preset-btn.is-loading > * { visibility: hidden; }
+.spt-preset-btn.is-loading::after { content: ''; position: absolute; width: 14px; height: 14px; border: 2px solid #10b981; border-top-color: transparent; border-radius: 999px; animation: spt-spin .7s linear infinite; }
+.spt-version-line { display: flex; align-items: flex-start; gap: 6px; margin-top: 8px; font-size: 10px; line-height: 1.35; color: #64748b; }
+.spt-inspector-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 11px 4px 16px 16px; scrollbar-gutter: stable; }
+.spt-inspector-foot { flex: 0 0 auto; position: sticky; bottom: 0; z-index: 20; padding: 11px 16px 12px; background: #fff; border-top: 1px solid #e2e8f0; box-shadow: 0 -8px 18px -14px rgba(15,23,42,.35); }
 
-                        <div id="layoutPanelBody" class="p-4 space-y-5 max-h-[calc(100vh-8rem)] overflow-y-auto">
-                            <div class="space-y-2">
-                                <p class="text-xs font-semibold uppercase tracking-wider text-slate-400">Preset Cepat</p>
-                                <div class="grid grid-cols-2 gap-2">
-                                    <button type="button" id="layoutAutoFit" class="inline-flex items-center justify-center gap-1.5 px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-medium rounded-lg transition-colors">
-                                        <i class="bx bx-collapse-vertical text-base"></i>
-                                        <span>Paksa Muat 1 Halaman</span>
-                                    </button>
-                                    <button type="button" id="layoutReset" class="inline-flex items-center justify-center gap-1.5 px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-medium rounded-lg transition-colors">
-                                        <i class="bx bx-reset text-base"></i>
-                                        <span>Reset ke Default</span>
-                                    </button>
-                                </div>
-                            </div>
+.spt-acc { border: 1px solid #e2e8f0; border-radius: 10px; background: #fff; margin-bottom: 7px; overflow: hidden; }
+.spt-acc-head { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 11px; background: #f8fafc; font-size: 11px; font-weight: 600; color: #334155; cursor: pointer; transition: background .15s ease; }
+.spt-acc-head:hover { background: #f1f5f9; }
+.spt-acc-body { padding: 10px 11px 11px; border-top: 1px solid #f1f5f9; }
+.spt-acc-body.is-collapsed { display: none; }
+.spt-acc-icon { transition: transform .15s ease; }
+.spt-acc-head[aria-expanded="true"] .spt-acc-icon { transform: rotate(180deg); }
+.spt-acc-dot { width: 6px; height: 6px; border-radius: 999px; background: #10b981; box-shadow: 0 0 0 3px #d1fae5; flex: 0 0 auto; }
+.spt-acc-count { min-width: 17px; height: 17px; padding: 0 5px; border-radius: 999px; background: #d1fae5; color: #047857; font-size: 9.5px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; }
 
-                            <div class="space-y-2.5" id="layoutAccordions">
-                                <!-- Akordion 1: Margin & Huruf Global -->
-                                <div class="border border-slate-200 rounded-xl overflow-hidden bg-white shadow-xs">
-                                    <button type="button" class="layout-accordion-btn w-full flex items-center justify-between px-3.5 py-2.5 bg-slate-50 hover:bg-slate-100 text-slate-700 font-medium text-xs transition-colors" data-target="acc-global">
-                                        <span class="flex items-center gap-2">
-                                            <i class="bx bx-font text-indigo-600 text-sm"></i>
-                                            <span>Halaman &amp; Huruf Global</span>
-                                        </span>
-                                        <i class="bx bx-chevron-down text-base transition-transform layout-accordion-icon"></i>
-                                    </button>
-                                    <div id="acc-global" class="layout-accordion-content p-3.5 space-y-3.5 border-t border-slate-100">
-                                        <div class="space-y-1.5">
-                                            <div class="flex items-center justify-between gap-2">
-                                                <label class="text-xs font-medium text-slate-700">Margin Atas</label>
-                                                <div class="flex items-center gap-1">
-                                                    <button type="button" class="layout-step w-6 h-6 inline-flex items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100" data-target="margin_top" data-dir="-1">−</button>
-                                                    <span class="text-xs font-semibold text-slate-700 tabular-nums w-14 text-center"><span data-value="margin_top"><?= htmlspecialchars($layout_initial['margin_top']) ?></span> mm</span>
-                                                    <button type="button" class="layout-step w-6 h-6 inline-flex items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100" data-target="margin_top" data-dir="1">+</button>
-                                                </div>
-                                            </div>
-                                            <input type="range" data-layout-key="margin_top" min="5" max="40" step="0.5" value="<?= htmlspecialchars($layout_initial['margin_top']) ?>" class="w-full accent-indigo-600">
-                                        </div>
-                                        <div class="space-y-1.5">
-                                            <div class="flex items-center justify-between gap-2">
-                                                <label class="text-xs font-medium text-slate-700">Margin Bawah</label>
-                                                <div class="flex items-center gap-1">
-                                                    <button type="button" class="layout-step w-6 h-6 inline-flex items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100" data-target="margin_bottom" data-dir="-1">−</button>
-                                                    <span class="text-xs font-semibold text-slate-700 tabular-nums w-14 text-center"><span data-value="margin_bottom"><?= htmlspecialchars($layout_initial['margin_bottom']) ?></span> mm</span>
-                                                    <button type="button" class="layout-step w-6 h-6 inline-flex items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100" data-target="margin_bottom" data-dir="1">+</button>
-                                                </div>
-                                            </div>
-                                            <input type="range" data-layout-key="margin_bottom" min="5" max="40" step="0.5" value="<?= htmlspecialchars($layout_initial['margin_bottom']) ?>" class="w-full accent-indigo-600">
-                                        </div>
-                                        <div class="space-y-1.5">
-                                            <div class="flex items-center justify-between gap-2">
-                                                <label class="text-xs font-medium text-slate-700">Margin Kiri</label>
-                                                <div class="flex items-center gap-1">
-                                                    <button type="button" class="layout-step w-6 h-6 inline-flex items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100" data-target="margin_left" data-dir="-1">−</button>
-                                                    <span class="text-xs font-semibold text-slate-700 tabular-nums w-14 text-center"><span data-value="margin_left"><?= htmlspecialchars($layout_initial['margin_left']) ?></span> mm</span>
-                                                    <button type="button" class="layout-step w-6 h-6 inline-flex items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100" data-target="margin_left" data-dir="1">+</button>
-                                                </div>
-                                            </div>
-                                            <input type="range" data-layout-key="margin_left" min="10" max="40" step="0.5" value="<?= htmlspecialchars($layout_initial['margin_left']) ?>" class="w-full accent-indigo-600">
-                                        </div>
-                                        <div class="space-y-1.5">
-                                            <div class="flex items-center justify-between gap-2">
-                                                <label class="text-xs font-medium text-slate-700">Margin Kanan</label>
-                                                <div class="flex items-center gap-1">
-                                                    <button type="button" class="layout-step w-6 h-6 inline-flex items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100" data-target="margin_right" data-dir="-1">−</button>
-                                                    <span class="text-xs font-semibold text-slate-700 tabular-nums w-14 text-center"><span data-value="margin_right"><?= htmlspecialchars($layout_initial['margin_right']) ?></span> mm</span>
-                                                    <button type="button" class="layout-step w-6 h-6 inline-flex items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100" data-target="margin_right" data-dir="1">+</button>
-                                                </div>
-                                            </div>
-                                            <input type="range" data-layout-key="margin_right" min="10" max="40" step="0.5" value="<?= htmlspecialchars($layout_initial['margin_right']) ?>" class="w-full accent-indigo-600">
-                                        </div>
-                                        <div class="space-y-1.5">
-                                            <div class="flex items-center justify-between gap-2">
-                                                <label class="text-xs font-medium text-slate-700">Ukuran Huruf Global</label>
-                                                <div class="flex items-center gap-1">
-                                                    <button type="button" class="layout-step w-6 h-6 inline-flex items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100" data-target="font_size" data-dir="-1">−</button>
-                                                    <span class="text-xs font-semibold text-slate-700 tabular-nums w-14 text-center"><span data-value="font_size"><?= htmlspecialchars($layout_initial['font_size']) ?></span> pt</span>
-                                                    <button type="button" class="layout-step w-6 h-6 inline-flex items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100" data-target="font_size" data-dir="1">+</button>
-                                                </div>
-                                            </div>
-                                            <input type="range" data-layout-key="font_size" min="9" max="13" step="0.5" value="<?= htmlspecialchars($layout_initial['font_size']) ?>" class="w-full accent-indigo-600">
-                                        </div>
-                                        <div class="space-y-1.5">
-                                            <div class="flex items-center justify-between gap-2">
-                                                <label class="text-xs font-medium text-slate-700">Jarak Antar Baris</label>
-                                                <div class="flex items-center gap-1">
-                                                    <button type="button" class="layout-step w-6 h-6 inline-flex items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100" data-target="line_height" data-dir="-1">−</button>
-                                                    <span class="text-xs font-semibold text-slate-700 tabular-nums w-14 text-center"><span data-value="line_height"><?= htmlspecialchars($layout_initial['line_height']) ?></span>×</span>
-                                                    <button type="button" class="layout-step w-6 h-6 inline-flex items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100" data-target="line_height" data-dir="1">+</button>
-                                                </div>
-                                            </div>
-                                            <input type="range" data-layout-key="line_height" min="1.0" max="2.0" step="0.05" value="<?= htmlspecialchars($layout_initial['line_height']) ?>" class="w-full accent-indigo-600">
-                                        </div>
-                                    </div>
-                                </div>
+.spt-control { display: flex; flex-direction: column; gap: 3px; }
+.spt-control-head { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+.spt-control-label { font-size: 10.5px; font-weight: 500; color: #334155; line-height: 1.25; }
+.spt-reset-btn { min-width: 18px; height: 18px; display: inline-flex; align-items: center; justify-content: center; border-radius: 5px; color: #94a3b8; font-size: 12px; line-height: 1; background: transparent; border: 0; cursor: pointer; transition: .15s ease; }
+.spt-reset-btn:hover { background: #f1f5f9; color: #0f172a; }
+.spt-control-row { display: flex; align-items: center; gap: 4px; }
+.spt-step-btn { width: 22px; height: 22px; flex: 0 0 22px; display: inline-flex; align-items: center; justify-content: center; border: 1px solid #e2e8f0; border-radius: 6px; background: #fff; color: #475569; font-size: 13px; line-height: 1; cursor: pointer; }
+.spt-step-btn:hover { background: #f8fafc; }
+.spt-step-btn:active { background: #f1f5f9; }
+.spt-number-wrap { position: relative; flex: 1 1 auto; min-width: 0; }
+.spt-number { width: 100%; height: 22px; padding: 0 19px 0 5px; border: 1px solid #e2e8f0; border-radius: 6px; background: #fff; text-align: center; font-size: 10.5px; font-weight: 600; color: #0f172a; font-variant-numeric: tabular-nums; -moz-appearance: textfield; }
+.spt-number::-webkit-outer-spin-button, .spt-number::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.spt-number:focus { outline: none; border-color: #10b981; box-shadow: 0 0 0 2px #d1fae5; }
+.spt-unit { position: absolute; right: 4px; top: 50%; transform: translateY(-50%); font-size: 8.5px; color: #94a3b8; pointer-events: none; }
+.spt-range { width: 100%; height: 13px; margin: 0; accent-color: #059669; cursor: pointer; }
+.spt-help { font-size: 9.5px; color: #94a3b8; line-height: 1.3; }
+.spt-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 9px 8px; }
 
-                                <!-- Akordion 2: Kop & Judul Surat -->
-                                <div class="border border-slate-200 rounded-xl overflow-hidden bg-white shadow-xs">
-                                    <button type="button" class="layout-accordion-btn w-full flex items-center justify-between px-3.5 py-2.5 bg-slate-50 hover:bg-slate-100 text-slate-700 font-medium text-xs transition-colors" data-target="acc-kop-judul">
-                                        <span class="flex items-center gap-2">
-                                            <i class="bx bx-heading text-indigo-600 text-sm"></i>
-                                            <span>Kop &amp; Judul Surat</span>
-                                        </span>
-                                        <i class="bx bx-chevron-down text-base transition-transform layout-accordion-icon"></i>
-                                    </button>
-                                    <div id="acc-kop-judul" class="layout-accordion-content p-3.5 space-y-3.5 border-t border-slate-100 hidden">
-                                        <div class="space-y-1.5">
-                                            <div class="flex items-center justify-between gap-2">
-                                                <label class="text-xs font-medium text-slate-700">Jarak Bawah Kop</label>
-                                                <div class="flex items-center gap-1">
-                                                    <button type="button" class="layout-step w-6 h-6 inline-flex items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100" data-target="kop_bottom_spacing" data-dir="-1">−</button>
-                                                    <span class="text-xs font-semibold text-slate-700 tabular-nums w-14 text-center"><span data-value="kop_bottom_spacing"><?= htmlspecialchars($layout_initial['kop_bottom_spacing'] ?? 10) ?></span> px</span>
-                                                    <button type="button" class="layout-step w-6 h-6 inline-flex items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100" data-target="kop_bottom_spacing" data-dir="1">+</button>
-                                                </div>
-                                            </div>
-                                            <input type="range" data-layout-key="kop_bottom_spacing" min="0" max="50" step="1" value="<?= htmlspecialchars($layout_initial['kop_bottom_spacing'] ?? 10) ?>" class="w-full accent-indigo-600">
-                                        </div>
-                                        <div class="space-y-1.5">
-                                            <div class="flex items-center justify-between gap-2">
-                                                <label class="text-xs font-medium text-slate-700">Spasi Atas SURAT TUGAS</label>
-                                                <div class="flex items-center gap-1">
-                                                    <button type="button" class="layout-step w-6 h-6 inline-flex items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100" data-target="judul_top_spacing" data-dir="-1">−</button>
-                                                    <span class="text-xs font-semibold text-slate-700 tabular-nums w-14 text-center"><span data-value="judul_top_spacing"><?= htmlspecialchars($layout_initial['judul_top_spacing'] ?? 0) ?></span> px</span>
-                                                    <button type="button" class="layout-step w-6 h-6 inline-flex items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100" data-target="judul_top_spacing" data-dir="1">+</button>
-                                                </div>
-                                            </div>
-                                            <input type="range" data-layout-key="judul_top_spacing" min="-15" max="40" step="1" value="<?= htmlspecialchars($layout_initial['judul_top_spacing'] ?? 0) ?>" class="w-full accent-indigo-600">
-                                        </div>
-                                        <div class="space-y-1.5">
-                                            <div class="flex items-center justify-between gap-2">
-                                                <label class="text-xs font-medium text-slate-700">Jarak Judul ke Nomor</label>
-                                                <div class="flex items-center gap-1">
-                                                    <button type="button" class="layout-step w-6 h-6 inline-flex items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100" data-target="nomor_surat_spacing" data-dir="-1">−</button>
-                                                    <span class="text-xs font-semibold text-slate-700 tabular-nums w-14 text-center"><span data-value="nomor_surat_spacing"><?= htmlspecialchars($layout_initial['nomor_surat_spacing'] ?? 4) ?></span> px</span>
-                                                    <button type="button" class="layout-step w-6 h-6 inline-flex items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100" data-target="nomor_surat_spacing" data-dir="1">+</button>
-                                                </div>
-                                            </div>
-                                            <input type="range" data-layout-key="nomor_surat_spacing" min="0" max="30" step="1" value="<?= htmlspecialchars($layout_initial['nomor_surat_spacing'] ?? 4) ?>" class="w-full accent-indigo-600">
-                                        </div>
-                                        <div class="space-y-1.5">
-                                            <div class="flex items-center justify-between gap-2">
-                                                <label class="text-xs font-medium text-slate-700">Jarak Sesudah Nomor</label>
-                                                <div class="flex items-center gap-1">
-                                                    <button type="button" class="layout-step w-6 h-6 inline-flex items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100" data-target="judul_bottom_spacing" data-dir="-1">−</button>
-                                                    <span class="text-xs font-semibold text-slate-700 tabular-nums w-14 text-center"><span data-value="judul_bottom_spacing"><?= htmlspecialchars($layout_initial['judul_bottom_spacing'] ?? 10) ?></span> px</span>
-                                                    <button type="button" class="layout-step w-6 h-6 inline-flex items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100" data-target="judul_bottom_spacing" data-dir="1">+</button>
-                                                </div>
-                                            </div>
-                                            <input type="range" data-layout-key="judul_bottom_spacing" min="0" max="40" step="1" value="<?= htmlspecialchars($layout_initial['judul_bottom_spacing'] ?? 10) ?>" class="w-full accent-indigo-600">
-                                        </div>
-                                    </div>
-                                </div>
+.spt-apply-btn { width: 100%; display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 9px 10px; border-radius: 8px; border: 0; background: #1e293b; color: #fff; font-size: 11.5px; font-weight: 600; cursor: pointer; transition: .15s ease; }
+.spt-apply-btn:hover { background: #0f172a; }
+.spt-apply-btn:disabled { opacity: .75; cursor: wait; }
+.spt-apply-btn.is-dirty { background: #059669; box-shadow: 0 0 0 3px #d1fae5; }
+.spt-apply-btn.is-dirty:hover { background: #047857; }
+.spt-btn-spinner { width: 12px; height: 12px; flex: 0 0 12px; border: 2px solid rgba(255,255,255,.45); border-top-color: #fff; border-radius: 999px; animation: spt-spin .7s linear infinite; }
+.spt-save-btn { width: 100%; display: inline-flex; align-items: center; justify-content: center; gap: 6px; margin-top: 6px; padding: 8px 10px; border-radius: 8px; border: 1px solid #a7f3d0; background: #fff; color: #047857; font-size: 11.5px; font-weight: 600; cursor: pointer; transition: .15s ease; }
+.spt-save-btn:hover { background: #ecfdf5; }
+.spt-save-btn:disabled { opacity: .7; cursor: wait; }
+.spt-foot-note { margin-top: 6px; text-align: center; font-size: 9.5px; color: #94a3b8; }
 
-                                <!-- Akordion 3: Dasar & Memerintahkan -->
-                                <div class="border border-slate-200 rounded-xl overflow-hidden bg-white shadow-xs">
-                                    <button type="button" class="layout-accordion-btn w-full flex items-center justify-between px-3.5 py-2.5 bg-slate-50 hover:bg-slate-100 text-slate-700 font-medium text-xs transition-colors" data-target="acc-dasar">
-                                        <span class="flex items-center gap-2">
-                                            <i class="bx bx-list-ol text-indigo-600 text-sm"></i>
-                                            <span>Blok Dasar &amp; Memerintahkan</span>
-                                        </span>
-                                        <i class="bx bx-chevron-down text-base transition-transform layout-accordion-icon"></i>
-                                    </button>
-                                    <div id="acc-dasar" class="layout-accordion-content p-3.5 space-y-3.5 border-t border-slate-100 hidden">
-                                        <div class="space-y-1.5">
-                                            <div class="flex items-center justify-between gap-2">
-                                                <label class="text-xs font-medium text-slate-700">Jarak Sebelum DASAR</label>
-                                                <div class="flex items-center gap-1">
-                                                    <button type="button" class="layout-step w-6 h-6 inline-flex items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100" data-target="dasar_top_spacing" data-dir="-1">−</button>
-                                                    <span class="text-xs font-semibold text-slate-700 tabular-nums w-14 text-center"><span data-value="dasar_top_spacing"><?= htmlspecialchars($layout_initial['dasar_top_spacing'] ?? 6) ?></span> px</span>
-                                                    <button type="button" class="layout-step w-6 h-6 inline-flex items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100" data-target="dasar_top_spacing" data-dir="1">+</button>
-                                                </div>
-                                            </div>
-                                            <input type="range" data-layout-key="dasar_top_spacing" min="0" max="30" step="1" value="<?= htmlspecialchars($layout_initial['dasar_top_spacing'] ?? 6) ?>" class="w-full accent-indigo-600">
-                                        </div>
-                                        <div class="space-y-1.5">
-                                            <div class="flex items-center justify-between gap-2">
-                                                <label class="text-xs font-medium text-slate-700">Kerapatan Butir Dasar</label>
-                                                <div class="flex items-center gap-1">
-                                                    <button type="button" class="layout-step w-6 h-6 inline-flex items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100" data-target="dasar_item_spacing" data-dir="-1">−</button>
-                                                    <span class="text-xs font-semibold text-slate-700 tabular-nums w-14 text-center"><span data-value="dasar_item_spacing"><?= htmlspecialchars($layout_initial['dasar_item_spacing'] ?? 3) ?></span> px</span>
-                                                    <button type="button" class="layout-step w-6 h-6 inline-flex items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100" data-target="dasar_item_spacing" data-dir="1">+</button>
-                                                </div>
-                                            </div>
-                                            <input type="range" data-layout-key="dasar_item_spacing" min="0" max="20" step="1" value="<?= htmlspecialchars($layout_initial['dasar_item_spacing'] ?? 3) ?>" class="w-full accent-indigo-600">
-                                        </div>
-                                        <div class="space-y-1.5">
-                                            <div class="flex items-center justify-between gap-2">
-                                                <label class="text-xs font-medium text-slate-700">Jarak Sesudah DASAR</label>
-                                                <div class="flex items-center gap-1">
-                                                    <button type="button" class="layout-step w-6 h-6 inline-flex items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100" data-target="dasar_bottom_spacing" data-dir="-1">−</button>
-                                                    <span class="text-xs font-semibold text-slate-700 tabular-nums w-14 text-center"><span data-value="dasar_bottom_spacing"><?= htmlspecialchars($layout_initial['dasar_bottom_spacing'] ?? 8) ?></span> px</span>
-                                                    <button type="button" class="layout-step w-6 h-6 inline-flex items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100" data-target="dasar_bottom_spacing" data-dir="1">+</button>
-                                                </div>
-                                            </div>
-                                            <input type="range" data-layout-key="dasar_bottom_spacing" min="0" max="30" step="1" value="<?= htmlspecialchars($layout_initial['dasar_bottom_spacing'] ?? 8) ?>" class="w-full accent-indigo-600">
-                                        </div>
-                                        <div class="space-y-1.5">
-                                            <div class="flex items-center justify-between gap-2">
-                                                <label class="text-xs font-medium text-slate-700">Spasi MEMERINTAHKAN</label>
-                                                <div class="flex items-center gap-1">
-                                                    <button type="button" class="layout-step w-6 h-6 inline-flex items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100" data-target="memerintahkan_spacing" data-dir="-1">−</button>
-                                                    <span class="text-xs font-semibold text-slate-700 tabular-nums w-14 text-center"><span data-value="memerintahkan_spacing"><?= htmlspecialchars($layout_initial['memerintahkan_spacing'] ?? 8) ?></span> px</span>
-                                                    <button type="button" class="layout-step w-6 h-6 inline-flex items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100" data-target="memerintahkan_spacing" data-dir="1">+</button>
-                                                </div>
-                                            </div>
-                                            <input type="range" data-layout-key="memerintahkan_spacing" min="0" max="30" step="1" value="<?= htmlspecialchars($layout_initial['memerintahkan_spacing'] ?? 8) ?>" class="w-full accent-indigo-600">
-                                        </div>
-                                    </div>
-                                </div>
+.spt-preview { flex: 1 1 auto; min-width: 0; min-height: 0; display: flex; flex-direction: column; height: 100%; overflow: hidden; background: #f1f5f9; }
+.spt-toolbar { flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 7px 12px; background: #fff; border-bottom: 1px solid #e2e8f0; }
+.spt-toolbar-left, .spt-toolbar-center, .spt-toolbar-right { display: flex; align-items: center; gap: 7px; min-width: 0; }
+.spt-toolbar-left { flex: 1 1 auto; }
+.spt-toolbar-center { flex: 0 0 auto; }
+.spt-toolbar-right { flex: 0 0 auto; }
+.spt-icon-btn { width: 28px; height: 28px; flex: 0 0 28px; display: inline-flex; align-items: center; justify-content: center; border: 1px solid #e2e8f0; border-radius: 7px; background: #fff; color: #475569; cursor: pointer; }
+.spt-icon-btn:hover { background: #f8fafc; }
+.spt-back-link { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 600; color: #475569; white-space: nowrap; text-decoration: none; }
+.spt-back-link:hover { color: #059669; }
+.spt-doc-id { font-size: 10.5px; color: #64748b; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.spt-badge { display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px; border-radius: 999px; font-size: 10px; font-weight: 600; white-space: nowrap; }
+.spt-badge-neutral { background: #f1f5f9; color: #475569; }
+.spt-badge-amber { background: #fef3c7; color: #92400e; }
+.spt-badge-emerald { background: #d1fae5; color: #047857; }
+.spt-btn { display: inline-flex; align-items: center; justify-content: center; gap: 4px; padding: 6px 9px; border-radius: 7px; font-size: 10.5px; font-weight: 600; white-space: nowrap; transition: .15s ease; text-decoration: none; cursor: pointer; }
+.spt-btn-emerald { background: #059669; color: #fff; border: 1px solid #059669; }
+.spt-btn-emerald:hover { background: #047857; border-color: #047857; }
+.spt-btn-outline { border: 1px solid #cbd5e1; background: #fff; color: #334155; }
+.spt-btn-outline:hover { background: #f8fafc; }
+.spt-canvas { position: relative; flex: 1 1 auto; min-height: 0; padding: 11px; display: flex; overflow: hidden; }
+.spt-frame { flex: 1 1 auto; width: 100%; height: 100%; border: 1px solid #e2e8f0; border-radius: 10px; background: #fff; }
+.spt-overlay { position: absolute; inset: 11px; z-index: 10; display: flex; align-items: center; justify-content: center; border-radius: 10px; background: rgba(255,255,255,.82); backdrop-filter: blur(2px); }
+.spt-spinner { width: 32px; height: 32px; border: 3px solid #059669; border-top-color: transparent; border-radius: 999px; animation: spt-spin .7s linear infinite; }
+.spt-resizer { flex: 0 0 5px; width: 5px; cursor: col-resize; background: transparent; position: relative; }
+.spt-resizer::after { content: ''; position: absolute; top: 50%; left: 1px; width: 2px; height: 36px; transform: translateY(-50%); border-radius: 2px; background: #cbd5e1; }
+.spt-resizer:hover::after, .spt-resizer.is-dragging::after { background: #059669; }
+@keyframes spt-spin { to { transform: rotate(360deg); } }
 
-                                <!-- Akordion 4: Blok Pegawai -->
-                                <div class="border border-slate-200 rounded-xl overflow-hidden bg-white shadow-xs">
-                                    <button type="button" class="layout-accordion-btn w-full flex items-center justify-between px-3.5 py-2.5 bg-slate-50 hover:bg-slate-100 text-slate-700 font-medium text-xs transition-colors" data-target="acc-pegawai">
-                                        <span class="flex items-center gap-2">
-                                            <i class="bx bx-user text-indigo-600 text-sm"></i>
-                                            <span>Blok Pegawai</span>
-                                        </span>
-                                        <i class="bx bx-chevron-down text-base transition-transform layout-accordion-icon"></i>
-                                    </button>
-                                    <div id="acc-pegawai" class="layout-accordion-content p-3.5 space-y-3.5 border-t border-slate-100 hidden">
-                                        <div class="space-y-1.5">
-                                            <div class="flex items-center justify-between gap-2">
-                                                <label class="text-xs font-medium text-slate-700">Jarak Sebelum KEPADA</label>
-                                                <div class="flex items-center gap-1">
-                                                    <button type="button" class="layout-step w-6 h-6 inline-flex items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100" data-target="pegawai_top_spacing" data-dir="-1">−</button>
-                                                    <span class="text-xs font-semibold text-slate-700 tabular-nums w-14 text-center"><span data-value="pegawai_top_spacing"><?= htmlspecialchars($layout_initial['pegawai_top_spacing'] ?? 6) ?></span> px</span>
-                                                    <button type="button" class="layout-step w-6 h-6 inline-flex items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100" data-target="pegawai_top_spacing" data-dir="1">+</button>
-                                                </div>
-                                            </div>
-                                            <input type="range" data-layout-key="pegawai_top_spacing" min="0" max="30" step="1" value="<?= htmlspecialchars($layout_initial['pegawai_top_spacing'] ?? 6) ?>" class="w-full accent-indigo-600">
-                                        </div>
-                                        <div class="space-y-1.5">
-                                            <div class="flex items-center justify-between gap-2">
-                                                <label class="text-xs font-medium text-slate-700">Jarak Antar Pegawai</label>
-                                                <div class="flex items-center gap-1">
-                                                    <button type="button" class="layout-step w-6 h-6 inline-flex items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100" data-target="pegawai_gap_spacing" data-dir="-1">−</button>
-                                                    <span class="text-xs font-semibold text-slate-700 tabular-nums w-14 text-center"><span data-value="pegawai_gap_spacing"><?= htmlspecialchars($layout_initial['pegawai_gap_spacing'] ?? 8) ?></span> px</span>
-                                                    <button type="button" class="layout-step w-6 h-6 inline-flex items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100" data-target="pegawai_gap_spacing" data-dir="1">+</button>
-                                                </div>
-                                            </div>
-                                            <input type="range" data-layout-key="pegawai_gap_spacing" min="0" max="35" step="1" value="<?= htmlspecialchars($layout_initial['pegawai_gap_spacing'] ?? 8) ?>" class="w-full accent-indigo-600">
-                                            <span class="text-[11px] text-slate-400">Jarak pemisah antar orang pada daftar pegawai</span>
-                                        </div>
-                                        <div class="space-y-1.5">
-                                            <div class="flex items-center justify-between gap-2">
-                                                <label class="text-xs font-medium text-slate-700">Kerapatan Baris Identitas</label>
-                                                <div class="flex items-center gap-1">
-                                                    <button type="button" class="layout-step w-6 h-6 inline-flex items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100" data-target="pegawai_line_spacing" data-dir="-1">−</button>
-                                                    <span class="text-xs font-semibold text-slate-700 tabular-nums w-14 text-center"><span data-value="pegawai_line_spacing"><?= htmlspecialchars($layout_initial['pegawai_line_spacing'] ?? 2) ?></span> px</span>
-                                                    <button type="button" class="layout-step w-6 h-6 inline-flex items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100" data-target="pegawai_line_spacing" data-dir="1">+</button>
-                                                </div>
-                                            </div>
-                                            <input type="range" data-layout-key="pegawai_line_spacing" min="0" max="15" step="1" value="<?= htmlspecialchars($layout_initial['pegawai_line_spacing'] ?? 2) ?>" class="w-full accent-indigo-600">
-                                            <span class="text-[11px] text-slate-400">Jarak antar baris Nama, NIP, Pangkat, Jabatan</span>
-                                        </div>
-                                    </div>
-                                </div>
+@media (max-width: 1023px) {
+    .spt-split { flex-direction: column; }
+    .spt-inspector { width: 100% !important; flex: 0 0 auto; max-width: none; max-height: 46vh; border-right: 0; border-bottom: 1px solid #e2e8f0; }
+    .spt-resizer { display: none; }
+    .spt-preview { flex: 1 1 auto; min-height: 52vh; }
+    .spt-toolbar { flex-wrap: wrap; }
+    .spt-toolbar-center { order: 3; width: 100%; justify-content: center; }
+}
+</style>
 
-                                <!-- Akordion 5: Blok Untuk -->
-                                <div class="border border-slate-200 rounded-xl overflow-hidden bg-white shadow-xs">
-                                    <button type="button" class="layout-accordion-btn w-full flex items-center justify-between px-3.5 py-2.5 bg-slate-50 hover:bg-slate-100 text-slate-700 font-medium text-xs transition-colors" data-target="acc-untuk">
-                                        <span class="flex items-center gap-2">
-                                            <i class="bx bx-task text-indigo-600 text-sm"></i>
-                                            <span>Blok Untuk</span>
-                                        </span>
-                                        <i class="bx bx-chevron-down text-base transition-transform layout-accordion-icon"></i>
-                                    </button>
-                                    <div id="acc-untuk" class="layout-accordion-content p-3.5 space-y-3.5 border-t border-slate-100 hidden">
-                                        <div class="space-y-1.5">
-                                            <div class="flex items-center justify-between gap-2">
-                                                <label class="text-xs font-medium text-slate-700">Jarak Sebelum UNTUK</label>
-                                                <div class="flex items-center gap-1">
-                                                    <button type="button" class="layout-step w-6 h-6 inline-flex items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100" data-target="untuk_top_spacing" data-dir="-1">−</button>
-                                                    <span class="text-xs font-semibold text-slate-700 tabular-nums w-14 text-center"><span data-value="untuk_top_spacing"><?= htmlspecialchars($layout_initial['untuk_top_spacing'] ?? 6) ?></span> px</span>
-                                                    <button type="button" class="layout-step w-6 h-6 inline-flex items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100" data-target="untuk_top_spacing" data-dir="1">+</button>
-                                                </div>
-                                            </div>
-                                            <input type="range" data-layout-key="untuk_top_spacing" min="0" max="30" step="1" value="<?= htmlspecialchars($layout_initial['untuk_top_spacing'] ?? 6) ?>" class="w-full accent-indigo-600">
-                                        </div>
-                                        <div class="space-y-1.5">
-                                            <div class="flex items-center justify-between gap-2">
-                                                <label class="text-xs font-medium text-slate-700">Kerapatan Butir Tugas</label>
-                                                <div class="flex items-center gap-1">
-                                                    <button type="button" class="layout-step w-6 h-6 inline-flex items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100" data-target="untuk_item_spacing" data-dir="-1">−</button>
-                                                    <span class="text-xs font-semibold text-slate-700 tabular-nums w-14 text-center"><span data-value="untuk_item_spacing"><?= htmlspecialchars($layout_initial['untuk_item_spacing'] ?? 3) ?></span> px</span>
-                                                    <button type="button" class="layout-step w-6 h-6 inline-flex items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100" data-target="untuk_item_spacing" data-dir="1">+</button>
-                                                </div>
-                                            </div>
-                                            <input type="range" data-layout-key="untuk_item_spacing" min="0" max="20" step="1" value="<?= htmlspecialchars($layout_initial['untuk_item_spacing'] ?? 3) ?>" class="w-full accent-indigo-600">
-                                        </div>
-                                        <div class="space-y-1.5">
-                                            <div class="flex items-center justify-between gap-2">
-                                                <label class="text-xs font-medium text-slate-700">Jarak Sesudah Tugas</label>
-                                                <div class="flex items-center gap-1">
-                                                    <button type="button" class="layout-step w-6 h-6 inline-flex items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100" data-target="untuk_bottom_spacing" data-dir="-1">−</button>
-                                                    <span class="text-xs font-semibold text-slate-700 tabular-nums w-14 text-center"><span data-value="untuk_bottom_spacing"><?= htmlspecialchars($layout_initial['untuk_bottom_spacing'] ?? 10) ?></span> px</span>
-                                                    <button type="button" class="layout-step w-6 h-6 inline-flex items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100" data-target="untuk_bottom_spacing" data-dir="1">+</button>
-                                                </div>
-                                            </div>
-                                            <input type="range" data-layout-key="untuk_bottom_spacing" min="0" max="30" step="1" value="<?= htmlspecialchars($layout_initial['untuk_bottom_spacing'] ?? 10) ?>" class="w-full accent-indigo-600">
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <!-- Akordion 6: Blok Tanda Tangan -->
-                                <div class="border border-slate-200 rounded-xl overflow-hidden bg-white shadow-xs">
-                                    <button type="button" class="layout-accordion-btn w-full flex items-center justify-between px-3.5 py-2.5 bg-slate-50 hover:bg-slate-100 text-slate-700 font-medium text-xs transition-colors" data-target="acc-ttd">
-                                        <span class="flex items-center gap-2">
-                                            <i class="bx bx-edit-alt text-indigo-600 text-sm"></i>
-                                            <span>Blok Tanda Tangan</span>
-                                        </span>
-                                        <i class="bx bx-chevron-down text-base transition-transform layout-accordion-icon"></i>
-                                    </button>
-                                    <div id="acc-ttd" class="layout-accordion-content p-3.5 space-y-3.5 border-t border-slate-100 hidden">
-                                        <div class="space-y-1.5">
-                                            <div class="flex items-center justify-between gap-2">
-                                                <label class="text-xs font-medium text-slate-700">Jarak Atas Blok TTD</label>
-                                                <div class="flex items-center gap-1">
-                                                    <button type="button" class="layout-step w-6 h-6 inline-flex items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100" data-target="ttd_offset" data-dir="-1">−</button>
-                                                    <span class="text-xs font-semibold text-slate-700 tabular-nums w-14 text-center"><span data-value="ttd_offset"><?= htmlspecialchars($layout_initial['ttd_offset'] ?? 10) ?></span> px</span>
-                                                    <button type="button" class="layout-step w-6 h-6 inline-flex items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100" data-target="ttd_offset" data-dir="1">+</button>
-                                                </div>
-                                            </div>
-                                            <input type="range" data-layout-key="ttd_offset" min="-20" max="80" step="1" value="<?= htmlspecialchars($layout_initial['ttd_offset'] ?? 10) ?>" class="w-full accent-indigo-600">
-                                        </div>
-                                        <div class="space-y-1.5">
-                                            <div class="flex items-center justify-between gap-2">
-                                                <label class="text-xs font-medium text-slate-700">Posisi Horizontal (X)</label>
-                                                <div class="flex items-center gap-1">
-                                                    <button type="button" class="layout-step w-6 h-6 inline-flex items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100" data-target="ttd_x" data-dir="-1">−</button>
-                                                    <span class="text-xs font-semibold text-slate-700 tabular-nums w-14 text-center"><span data-value="ttd_x"><?= htmlspecialchars($layout_initial['ttd_x'] ?? 0) ?></span> px</span>
-                                                    <button type="button" class="layout-step w-6 h-6 inline-flex items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100" data-target="ttd_x" data-dir="1">+</button>
-                                                </div>
-                                            </div>
-                                            <input type="range" data-layout-key="ttd_x" min="-50" max="50" step="1" value="<?= htmlspecialchars($layout_initial['ttd_x'] ?? 0) ?>" class="w-full accent-indigo-600">
-                                        </div>
-                                        <div class="space-y-1.5">
-                                            <div class="flex items-center justify-between gap-2">
-                                                <label class="text-xs font-medium text-slate-700">Jarak Tanggal ke Jabatan</label>
-                                                <div class="flex items-center gap-1">
-                                                    <button type="button" class="layout-step w-6 h-6 inline-flex items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100" data-target="ttd_date_to_jabatan" data-dir="-1">−</button>
-                                                    <span class="text-xs font-semibold text-slate-700 tabular-nums w-14 text-center"><span data-value="ttd_date_to_jabatan"><?= htmlspecialchars($layout_initial['ttd_date_to_jabatan'] ?? 4) ?></span> px</span>
-                                                    <button type="button" class="layout-step w-6 h-6 inline-flex items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100" data-target="ttd_date_to_jabatan" data-dir="1">+</button>
-                                                </div>
-                                            </div>
-                                            <input type="range" data-layout-key="ttd_date_to_jabatan" min="0" max="25" step="1" value="<?= htmlspecialchars($layout_initial['ttd_date_to_jabatan'] ?? 4) ?>" class="w-full accent-indigo-600">
-                                        </div>
-                                        <div class="space-y-1.5">
-                                            <div class="flex items-center justify-between gap-2">
-                                                <label class="text-xs font-medium text-slate-700">Ruang TTD &amp; Stempel</label>
-                                                <div class="flex items-center gap-1">
-                                                    <button type="button" class="layout-step w-6 h-6 inline-flex items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100" data-target="ttd_space_height" data-dir="-1">−</button>
-                                                    <span class="text-xs font-semibold text-slate-700 tabular-nums w-14 text-center"><span data-value="ttd_space_height"><?= htmlspecialchars($layout_initial['ttd_space_height'] ?? 60) ?></span> px</span>
-                                                    <button type="button" class="layout-step w-6 h-6 inline-flex items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100" data-target="ttd_space_height" data-dir="1">+</button>
-                                                </div>
-                                            </div>
-                                            <input type="range" data-layout-key="ttd_space_height" min="20" max="120" step="2" value="<?= htmlspecialchars($layout_initial['ttd_space_height'] ?? 60) ?>" class="w-full accent-indigo-600">
-                                        </div>
-                                        <div class="space-y-1.5">
-                                            <div class="flex items-center justify-between gap-2">
-                                                <label class="text-xs font-medium text-slate-700">Jarak ke Nama &amp; NIP</label>
-                                                <div class="flex items-center gap-1">
-                                                    <button type="button" class="layout-step w-6 h-6 inline-flex items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100" data-target="ttd_name_nip_spacing" data-dir="-1">−</button>
-                                                    <span class="text-xs font-semibold text-slate-700 tabular-nums w-14 text-center"><span data-value="ttd_name_nip_spacing"><?= htmlspecialchars($layout_initial['ttd_name_nip_spacing'] ?? 4) ?></span> px</span>
-                                                    <button type="button" class="layout-step w-6 h-6 inline-flex items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100" data-target="ttd_name_nip_spacing" data-dir="1">+</button>
-                                                </div>
-                                            </div>
-                                            <input type="range" data-layout-key="ttd_name_nip_spacing" min="0" max="25" step="1" value="<?= htmlspecialchars($layout_initial['ttd_name_nip_spacing'] ?? 4) ?>" class="w-full accent-indigo-600">
-                                        </div>
-                                        <label class="flex items-start gap-2.5 p-2.5 rounded-lg bg-slate-50 border border-slate-200 cursor-pointer">
-                                            <input type="checkbox" id="layoutLockTtd" class="mt-0.5 accent-indigo-600" <?= !empty($layout_initial['lock_ttd']) ? 'checked' : '' ?>>
-                                            <span class="text-xs text-slate-700">
-                                                Kunci Blok TTD
-                                                <span class="block text-[11px] text-slate-400">Cegah blok tanda tangan terpotong ke halaman berikutnya.</span>
-                                            </span>
-                                        </label>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div class="space-y-2 pt-2 border-t border-slate-100">
-                                <button type="button" id="layoutApplyBtn" class="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-slate-800 hover:bg-slate-900 text-white text-sm font-medium rounded-lg transition-colors">
-                                    <i class="bx bx-check-double text-base"></i>
-                                    <span>Terapkan Perubahan</span>
-                                </button>
-                                <button type="button" id="layoutSaveDefaultBtn" class="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-white hover:bg-indigo-50 text-indigo-700 border border-indigo-200 text-sm font-medium rounded-lg transition-colors">
-                                    <i class="bx bx-save text-base"></i>
-                                    <span>Simpan sebagai Default Template</span>
-                                </button>
-                                <p class="text-[11px] text-slate-400 text-center">Default template berlaku untuk semua surat yang memakai template ini.</p>
-                            </div>
-                            <p class="text-[11px] text-slate-400 text-center" id="layoutStatus">Pengaturan default template</p>
-                        </div>
+<div class="spt-app-shell" id="sptAppShell">
+    <div class="spt-split">
+        <aside class="spt-inspector" id="sptInspector">
+            <div class="spt-inspector-head">
+                <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;">
+                    <div style="min-width:0;">
+                        <h1 class="spt-inspector-title">
+                            <i class="bx bx-slider-alt" style="color:#059669;font-size:16px;"></i>
+                            <span>Penyesuaian Tata Letak</span>
+                        </h1>
+                        <p class="spt-inspector-sub">Geser slider, ketik angka, atau gunakan tombol &minus; / +. Pratinjau PDF diperbarui saat Anda menekan Terapkan.</p>
                     </div>
                 </div>
+                <div class="spt-preset-row">
+                    <button type="button" id="layoutAutoFit" class="spt-preset-btn" title="Kompres tata letak agar pas 1 halaman">
+                        <i class="bx bx-collapse-vertical" style="font-size:13px;"></i>
+                        <span>Paksa Muat 1 Halaman</span>
+                    </button>
+                    <button type="button" id="layoutReset" class="spt-preset-btn" title="Kembalikan ke default template">
+                        <i class="bx bx-reset" style="font-size:13px;"></i>
+                        <span>Reset ke Default</span>
+                    </button>
+                </div>
+                <div class="spt-version-line">
+                    <?php if (!empty($template_berlaku_mulai)): ?>
+                        <i class="bx bx-calendar-check" style="color:#059669;font-size:13px;margin-top:1px;"></i>
+                        <span><strong>Template dasar baru (PAPBD)</strong> &mdash; <?= htmlspecialchars($template_nama ?? basename($template_path)) ?>, berlaku mulai <?= date('d/m/Y', strtotime($template_berlaku_mulai)) ?>.</span>
+                    <?php elseif (!empty($peringatan_template_lama)): ?>
+                        <i class="bx bx-error" style="color:#d97706;font-size:13px;margin-top:1px;"></i>
+                        <span><strong>Template dasar lama</strong> &mdash; <?= htmlspecialchars($template_nama ?? basename($template_path)) ?>; template dasar baru untuk kategori ini belum di-upload.</span>
+                    <?php else: ?>
+                        <i class="bx bx-history" style="color:#64748b;font-size:13px;margin-top:1px;"></i>
+                        <span><strong>Template dasar lama</strong> &mdash; <?= htmlspecialchars($template_nama ?? basename($template_path)) ?>, sesuai tanggal surat <?= date('d/m/Y', strtotime($surat['tanggal_surat'])) ?>.</span>
+                    <?php endif; ?>
+                </div>
+            </div>
 
-                <!-- Kolom preview (setara col-lg-8) -->
-                <div class="lg:col-span-8">
-                    <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-                        <div class="flex flex-wrap items-center justify-between gap-2 px-4 py-2 border-b border-slate-200">
-                            <p class="text-sm text-slate-500">Tampilan di bawah sama dengan file PDF yang diunduh.</p>
-                            <span class="inline-flex items-center gap-1.5 text-xs font-medium text-indigo-600">
-                                <i class="bx bx-show"></i> Preview PDF
+            <div class="spt-inspector-body" id="layoutPanelBody">
+                <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:7px;">
+                    <span style="font-size:9.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#94a3b8;">Pengaturan Blok</span>
+                    <button type="button" id="layoutExpandAll" class="spt-reset-btn" style="width:auto;padding:0 6px;font-size:10px;">Tutup Semua</button>
+                </div>
+                <div id="layoutAccordions">
+                    <div class="spt-acc" data-keys="margin_top margin_bottom margin_left margin_right font_size line_height">
+                        <button type="button" class="layout-accordion-btn spt-acc-head" data-target="acc-global" aria-expanded="true">
+                            <span style="display:flex;align-items:center;gap:6px;min-width:0;">
+                                <i class="bx bx-font" style="color:#059669;font-size:13px;"></i>
+                                <span>Halaman &amp; Huruf Global</span>
+                                <span class="spt-acc-dot spt-hidden" data-acc-dot></span>
+                                <span class="spt-acc-count spt-hidden" data-acc-count></span>
                             </span>
-                        </div>
-                        <div class="p-4 relative">
-                            <div id="pdfPreviewLoading" class="hidden absolute inset-0 z-10 bg-white/80 backdrop-blur-[1px] flex items-center justify-center rounded-lg">
-                                <div class="flex flex-col items-center gap-2 text-center">
-                                    <div class="animate-spin rounded-full h-9 w-9 border-4 border-indigo-600 border-t-transparent"></div>
-                                    <p class="text-sm font-medium text-slate-700">Memperbarui PDF…</p>
-                                    <p class="text-xs text-slate-500">Menyusun ulang tata letak surat</p>
-                                </div>
+                            <i class="bx bx-chevron-down spt-acc-icon" style="font-size:14px;"></i>
+                        </button>
+                        <div id="acc-global" class="layout-accordion-content spt-acc-body">
+                            <div class="spt-grid-2">
+                                <?= spt_layout_render_control('margin_top', 'Margin Atas', $layout_initial, 'mm') ?>
+                                <?= spt_layout_render_control('margin_bottom', 'Margin Bawah', $layout_initial, 'mm') ?>
+                                <?= spt_layout_render_control('margin_left', 'Margin Kiri', $layout_initial, 'mm') ?>
+                                <?= spt_layout_render_control('margin_right', 'Margin Kanan', $layout_initial, 'mm') ?>
                             </div>
-                            <iframe id="pdfPreviewFrame" src="<?= htmlspecialchars($previewPdfUrl) ?>" class="w-full border border-slate-200 rounded-lg bg-white" style="min-height: 80vh; height: 297mm;" title="Preview surat (PDF)"></iframe>
+                            <div style="display:flex;flex-direction:column;gap:10px;margin-top:10px;">
+                                <?= spt_layout_render_control('font_size', 'Ukuran Huruf Global', $layout_initial, 'pt') ?>
+                                <?= spt_layout_render_control('line_height', 'Jarak Antar Baris', $layout_initial, '×') ?>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="spt-acc" data-keys="kop_bottom_spacing judul_top_spacing nomor_surat_spacing judul_bottom_spacing">
+                        <button type="button" class="layout-accordion-btn spt-acc-head" data-target="acc-kop-judul" aria-expanded="false">
+                            <span style="display:flex;align-items:center;gap:6px;min-width:0;">
+                                <i class="bx bx-heading" style="color:#059669;font-size:13px;"></i>
+                                <span>Kop &amp; Judul Surat</span>
+                                <span class="spt-acc-dot spt-hidden" data-acc-dot></span>
+                                <span class="spt-acc-count spt-hidden" data-acc-count></span>
+                            </span>
+                            <i class="bx bx-chevron-down spt-acc-icon" style="font-size:14px;"></i>
+                        </button>
+                        <div id="acc-kop-judul" class="layout-accordion-content spt-acc-body is-collapsed">
+                            <div style="display:flex;flex-direction:column;gap:10px;">
+                                <?= spt_layout_render_control('kop_bottom_spacing', 'Jarak Bawah Kop', $layout_initial, 'px') ?>
+                                <?= spt_layout_render_control('judul_top_spacing', 'Spasi Atas SURAT TUGAS', $layout_initial, 'px') ?>
+                                <?= spt_layout_render_control('nomor_surat_spacing', 'Jarak Judul ke Nomor', $layout_initial, 'px', 'Minimum 2 px; line-height judul dikunci 1.3 agar tidak bertumpuk.') ?>
+                                <?= spt_layout_render_control('judul_bottom_spacing', 'Jarak Sesudah Nomor', $layout_initial, 'px') ?>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="spt-acc" data-keys="dasar_top_spacing dasar_item_spacing dasar_bottom_spacing memerintahkan_spacing">
+                        <button type="button" class="layout-accordion-btn spt-acc-head" data-target="acc-dasar" aria-expanded="false">
+                            <span style="display:flex;align-items:center;gap:6px;min-width:0;">
+                                <i class="bx bx-list-ol" style="color:#059669;font-size:13px;"></i>
+                                <span>Blok Dasar &amp; Memerintahkan</span>
+                                <span class="spt-acc-dot spt-hidden" data-acc-dot></span>
+                                <span class="spt-acc-count spt-hidden" data-acc-count></span>
+                            </span>
+                            <i class="bx bx-chevron-down spt-acc-icon" style="font-size:14px;"></i>
+                        </button>
+                        <div id="acc-dasar" class="layout-accordion-content spt-acc-body is-collapsed">
+                            <div style="display:flex;flex-direction:column;gap:10px;">
+                                <?= spt_layout_render_control('dasar_top_spacing', 'Jarak Sebelum DASAR', $layout_initial, 'px') ?>
+                                <?= spt_layout_render_control('dasar_item_spacing', 'Kerapatan Butir Dasar', $layout_initial, 'px') ?>
+                                <?= spt_layout_render_control('dasar_bottom_spacing', 'Jarak Sesudah DASAR', $layout_initial, 'px') ?>
+                                <?= spt_layout_render_control('memerintahkan_spacing', 'Spasi MEMERINTAHKAN', $layout_initial, 'px') ?>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="spt-acc" data-keys="pegawai_top_spacing pegawai_gap_spacing pegawai_line_spacing">
+                        <button type="button" class="layout-accordion-btn spt-acc-head" data-target="acc-pegawai" aria-expanded="false">
+                            <span style="display:flex;align-items:center;gap:6px;min-width:0;">
+                                <i class="bx bx-user" style="color:#059669;font-size:13px;"></i>
+                                <span>Blok Pegawai</span>
+                                <span class="spt-acc-dot spt-hidden" data-acc-dot></span>
+                                <span class="spt-acc-count spt-hidden" data-acc-count></span>
+                            </span>
+                            <i class="bx bx-chevron-down spt-acc-icon" style="font-size:14px;"></i>
+                        </button>
+                        <div id="acc-pegawai" class="layout-accordion-content spt-acc-body is-collapsed">
+                            <div style="display:flex;flex-direction:column;gap:10px;">
+                                <?= spt_layout_render_control('pegawai_top_spacing', 'Jarak Sebelum KEPADA', $layout_initial, 'px') ?>
+                                <?= spt_layout_render_control('pegawai_gap_spacing', 'Jarak Antar Pegawai', $layout_initial, 'px', 'Jarak pemisah antar orang pada daftar pegawai.') ?>
+                                <?= spt_layout_render_control('pegawai_line_spacing', 'Kerapatan Baris Identitas', $layout_initial, 'px', 'Jarak antar baris Nama, NIP, Pangkat, Jabatan.') ?>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="spt-acc" data-keys="untuk_top_spacing untuk_item_spacing untuk_bottom_spacing">
+                        <button type="button" class="layout-accordion-btn spt-acc-head" data-target="acc-untuk" aria-expanded="false">
+                            <span style="display:flex;align-items:center;gap:6px;min-width:0;">
+                                <i class="bx bx-task" style="color:#059669;font-size:13px;"></i>
+                                <span>Blok Untuk</span>
+                                <span class="spt-acc-dot spt-hidden" data-acc-dot></span>
+                                <span class="spt-acc-count spt-hidden" data-acc-count></span>
+                            </span>
+                            <i class="bx bx-chevron-down spt-acc-icon" style="font-size:14px;"></i>
+                        </button>
+                        <div id="acc-untuk" class="layout-accordion-content spt-acc-body is-collapsed">
+                            <div style="display:flex;flex-direction:column;gap:10px;">
+                                <?= spt_layout_render_control('untuk_top_spacing', 'Jarak Sebelum UNTUK', $layout_initial, 'px') ?>
+                                <?= spt_layout_render_control('untuk_item_spacing', 'Kerapatan Butir Tugas', $layout_initial, 'px') ?>
+                                <?= spt_layout_render_control('untuk_bottom_spacing', 'Jarak Sesudah Tugas', $layout_initial, 'px') ?>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="spt-acc" data-keys="ttd_offset ttd_x ttd_date_to_jabatan ttd_space_height ttd_name_nip_spacing lock_ttd">
+                        <button type="button" class="layout-accordion-btn spt-acc-head" data-target="acc-ttd" aria-expanded="false">
+                            <span style="display:flex;align-items:center;gap:6px;min-width:0;">
+                                <i class="bx bx-edit-alt" style="color:#059669;font-size:13px;"></i>
+                                <span>Blok Tanda Tangan</span>
+                                <span class="spt-acc-dot spt-hidden" data-acc-dot></span>
+                                <span class="spt-acc-count spt-hidden" data-acc-count></span>
+                            </span>
+                            <i class="bx bx-chevron-down spt-acc-icon" style="font-size:14px;"></i>
+                        </button>
+                        <div id="acc-ttd" class="layout-accordion-content spt-acc-body is-collapsed">
+                            <div style="display:flex;flex-direction:column;gap:10px;">
+                                <?= spt_layout_render_control('ttd_offset', 'Jarak Atas Blok TTD', $layout_initial, 'px') ?>
+                                <?= spt_layout_render_control('ttd_x', 'Posisi Horizontal (X)', $layout_initial, 'px') ?>
+                                <?= spt_layout_render_control('ttd_date_to_jabatan', 'Jarak Tanggal ke Jabatan', $layout_initial, 'px') ?>
+                                <?= spt_layout_render_control('ttd_space_height', 'Ruang TTD & Stempel', $layout_initial, 'px') ?>
+                                <?= spt_layout_render_control('ttd_name_nip_spacing', 'Jarak ke Nama & NIP', $layout_initial, 'px') ?>
+                                <label style="display:flex;align-items:flex-start;gap:8px;padding:8px;border:1px solid #e2e8f0;border-radius:8px;background:#f8fafc;cursor:pointer;">
+                                    <input type="checkbox" id="layoutLockTtd" style="margin-top:2px;accent-color:#059669;" <?= !empty($layout_initial['lock_ttd']) ? 'checked' : '' ?>>
+                                    <span style="font-size:10.5px;color:#334155;line-height:1.35;">
+                                        <span style="font-weight:600;">Kunci Blok TTD</span>
+                                        <span style="display:block;color:#94a3b8;">Cegah blok tanda tangan terpotong ke halaman berikutnya.</span>
+                                    </span>
+                                </label>
+                            </div>
                         </div>
                     </div>
                 </div>
             </div>
 
-            <div class="flex justify-center py-4">
-                <a href="surat-tugas.php?edit=<?= $sid ?>" class="inline-flex items-center gap-2 px-6 py-2.5 bg-amber-500 hover:bg-amber-600 text-white font-medium rounded-lg transition-colors shadow-sm">
-                    <i class="bx bx-edit text-lg"></i>
-                    <span>Edit Surat</span>
-                </a>
+            <div class="spt-inspector-foot">
+                <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px;">
+                    <span id="layoutStatus" style="font-size:10px;color:#64748b;">Pengaturan default template</span>
+                    <span style="font-size:9.5px;color:#94a3b8;"><span style="display:inline-block;padding:1px 4px;border:1px solid #e2e8f0;border-radius:4px;background:#f8fafc;">Ctrl</span> + <span style="display:inline-block;padding:1px 4px;border:1px solid #e2e8f0;border-radius:4px;background:#f8fafc;">Enter</span></span>
+                </div>
+                <button type="button" id="layoutApplyBtn" class="spt-apply-btn">
+                    <span data-apply-spinner class="spt-btn-spinner spt-hidden"></span>
+                    <i class="bx bx-check-double" style="font-size:14px;"></i>
+                    <span data-apply-label>Terapkan Perubahan</span>
+                </button>
+                <button type="button" id="layoutSaveDefaultBtn" class="spt-save-btn">
+                    <i class="bx bx-save" style="font-size:14px;"></i>
+                    <span>Simpan sebagai Default Template</span>
+                </button>
+                <p class="spt-foot-note">Default template berlaku untuk semua surat yang memakai template ini.</p>
             </div>
-        </div>
+        </aside>
 
-        <script>
-        (function () {
-            const SURAT_ID = <?= json_encode((string)$sid) ?>;
-            const TEMPLATE_ID = <?= json_encode((int)$template_id_terpilih) ?>;
-            const DEFAULTS = <?= $layoutJsonDefaults ?>;
-            const INITIAL = <?= $layoutJsonInitial ?>;
-            const HAS_SAVED_DEFAULT = <?= $layout_has_saved_default ? 'true' : 'false' ?>;
-            const STORAGE_KEY = 'spt_layout_' + SURAT_ID;
-            const STEP_CONFIG = {
-                margin_top: { min: 5, max: 40, step: 0.5, decimals: 1, unit: 'mm' },
-                margin_bottom: { min: 5, max: 40, step: 0.5, decimals: 1, unit: 'mm' },
-                margin_left: { min: 10, max: 40, step: 0.5, decimals: 1, unit: 'mm' },
-                margin_right: { min: 10, max: 40, step: 0.5, decimals: 1, unit: 'mm' },
-                font_size: { min: 9, max: 13, step: 0.5, decimals: 1, unit: 'pt' },
-                line_height: { min: 1.0, max: 2.0, step: 0.05, decimals: 2, unit: '×' },
-                kop_bottom_spacing: { min: 0, max: 50, step: 1, decimals: 0, unit: 'px' },
-                judul_top_spacing: { min: -15, max: 40, step: 1, decimals: 0, unit: 'px' },
-                nomor_surat_spacing: { min: 0, max: 30, step: 1, decimals: 0, unit: 'px' },
-                judul_bottom_spacing: { min: 0, max: 40, step: 1, decimals: 0, unit: 'px' },
-                dasar_top_spacing: { min: 0, max: 30, step: 1, decimals: 0, unit: 'px' },
-                dasar_item_spacing: { min: 0, max: 20, step: 1, decimals: 0, unit: 'px' },
-                dasar_bottom_spacing: { min: 0, max: 30, step: 1, decimals: 0, unit: 'px' },
-                memerintahkan_spacing: { min: 0, max: 30, step: 1, decimals: 0, unit: 'px' },
-                pegawai_top_spacing: { min: 0, max: 30, step: 1, decimals: 0, unit: 'px' },
-                pegawai_gap_spacing: { min: 0, max: 35, step: 1, decimals: 0, unit: 'px' },
-                pegawai_line_spacing: { min: 0, max: 15, step: 1, decimals: 0, unit: 'px' },
-                untuk_top_spacing: { min: 0, max: 30, step: 1, decimals: 0, unit: 'px' },
-                untuk_item_spacing: { min: 0, max: 20, step: 1, decimals: 0, unit: 'px' },
-                untuk_bottom_spacing: { min: 0, max: 30, step: 1, decimals: 0, unit: 'px' },
-                ttd_offset: { min: -20, max: 80, step: 1, decimals: 0, unit: 'px' },
-                ttd_x: { min: -50, max: 50, step: 1, decimals: 0, unit: 'px' },
-                ttd_date_to_jabatan: { min: 0, max: 25, step: 1, decimals: 0, unit: 'px' },
-                ttd_space_height: { min: 20, max: 120, step: 2, decimals: 0, unit: 'px' },
-                ttd_name_nip_spacing: { min: 0, max: 25, step: 1, decimals: 0, unit: 'px' }
-            };
-            const KEYS = Object.keys(STEP_CONFIG);
-            const frame = document.getElementById('pdfPreviewFrame');
-            const loading = document.getElementById('pdfPreviewLoading');
-            const downloadBtn = document.getElementById('downloadPdfBtn');
-            const status = document.getElementById('layoutStatus');
-            const lockCheckbox = document.getElementById('layoutLockTtd');
-            const inputs = {};
-            document.querySelectorAll('[data-layout-key]').forEach(function (input) {
-                inputs[input.dataset.layoutKey] = input;
+        <div class="spt-resizer" id="layoutResizer" title="Geser untuk mengatur lebar panel inspector"></div>
+
+        <section class="spt-preview">
+            <div class="spt-toolbar">
+                <div class="spt-toolbar-left">
+                    <button type="button" id="sidebarToggle" class="spt-icon-btn" title="Tampilkan/sembunyikan menu navigasi" aria-label="Toggle menu navigasi">
+                        <i class="bx bx-menu" style="font-size:16px;"></i>
+                    </button>
+                    <a href="surat-tugas.php?edit=<?= $sid ?>" class="spt-back-link">
+                        <i class="bx bx-arrow-back"></i>
+                        <span>Kembali ke Edit Surat</span>
+                    </a>
+                    <span class="spt-doc-id" title="Surat Tugas #<?= htmlspecialchars($surat['nomor_surat']) ?>">Surat Tugas #<?= htmlspecialchars($surat['nomor_surat']) ?></span>
+                </div>
+                <div class="spt-toolbar-center">
+                    <span id="pageBadge" class="spt-badge spt-badge-neutral">Memeriksa halaman&hellip;</span>
+                    <span id="saveBadge" class="spt-badge spt-badge-emerald">Tersimpan</span>
+                </div>
+                <div class="spt-toolbar-right">
+                    <a href="generate-surat.php?id=<?= $sid ?>&format=docx" class="spt-btn spt-btn-outline" title="Unduh Word (.docx)">
+                        <i class="bx bx-file-blank" style="font-size:14px;"></i>
+                        <span>Word</span>
+                    </a>
+                    <a id="downloadPdfBtn" href="<?= htmlspecialchars($downloadPdfUrl) ?>" class="spt-btn spt-btn-emerald">
+                        <i class="bx bxs-file-pdf" style="font-size:14px;"></i>
+                        <span>Unduh PDF</span>
+                    </a>
+                    <button type="button" id="printPdfBtn" class="spt-btn spt-btn-outline">
+                        <i class="bx bx-printer" style="font-size:14px;"></i>
+                        <span>Cetak</span>
+                    </button>
+                </div>
+            </div>
+            <div class="spt-canvas" id="pdfCanvas">
+                <iframe id="pdfPreviewFrame" class="spt-frame" title="Preview surat (PDF)"></iframe>
+                <div id="pdfPreviewLoading" class="spt-overlay spt-hidden">
+                    <div style="display:flex;flex-direction:column;align-items:center;gap:8px;text-align:center;">
+                        <div class="spt-spinner"></div>
+                        <p style="font-size:12px;font-weight:600;color:#334155;">Memperbarui pratinjau PDF&hellip;</p>
+                        <p style="font-size:10.5px;color:#64748b;">Menyusun ulang tata letak surat</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </div>
+</div>
+
+<script>
+(function () {
+    const SURAT_ID = <?= json_encode((string)$sid) ?>;
+    const TEMPLATE_ID = <?= json_encode((int)$template_id_terpilih) ?>;
+    const DEFAULTS = <?= $layoutJsonDefaults ?>;
+    const INITIAL = <?= $layoutJsonInitial ?>;
+    const HAS_SAVED_DEFAULT = <?= $layout_has_saved_default ? 'true' : 'false' ?>;
+    const INITIAL_PREVIEW_URL = <?= json_encode($previewPdfUrl) ?>;
+    const INITIAL_DOWNLOAD_URL = <?= json_encode($downloadPdfUrl) ?>;
+    const STORAGE_KEY = 'spt_layout_' + SURAT_ID;
+    const WIDTH_KEY = 'spt_inspector_width';
+    const SIDEBAR_KEY = 'spt_sidebar_collapsed';
+
+    const STEP_CONFIG = {
+        margin_top: { min: 5, max: 40, step: 0.5, decimals: 1, unit: 'mm' },
+        margin_bottom: { min: 5, max: 40, step: 0.5, decimals: 1, unit: 'mm' },
+        margin_left: { min: 10, max: 40, step: 0.5, decimals: 1, unit: 'mm' },
+        margin_right: { min: 10, max: 40, step: 0.5, decimals: 1, unit: 'mm' },
+        font_size: { min: 9, max: 13, step: 0.5, decimals: 1, unit: 'pt' },
+        line_height: { min: 1.0, max: 2.0, step: 0.05, decimals: 2, unit: '×' },
+        kop_bottom_spacing: { min: 0, max: 50, step: 1, decimals: 0, unit: 'px' },
+        judul_top_spacing: { min: -15, max: 40, step: 1, decimals: 0, unit: 'px' },
+        nomor_surat_spacing: { min: 2, max: 30, step: 1, decimals: 0, unit: 'px' },
+        judul_bottom_spacing: { min: 0, max: 40, step: 1, decimals: 0, unit: 'px' },
+        dasar_top_spacing: { min: 0, max: 30, step: 1, decimals: 0, unit: 'px' },
+        dasar_item_spacing: { min: 0, max: 20, step: 1, decimals: 0, unit: 'px' },
+        dasar_bottom_spacing: { min: 0, max: 30, step: 1, decimals: 0, unit: 'px' },
+        memerintahkan_spacing: { min: 0, max: 30, step: 1, decimals: 0, unit: 'px' },
+        pegawai_top_spacing: { min: 0, max: 30, step: 1, decimals: 0, unit: 'px' },
+        pegawai_gap_spacing: { min: 0, max: 35, step: 1, decimals: 0, unit: 'px' },
+        pegawai_line_spacing: { min: 0, max: 15, step: 1, decimals: 0, unit: 'px' },
+        untuk_top_spacing: { min: 0, max: 30, step: 1, decimals: 0, unit: 'px' },
+        untuk_item_spacing: { min: 0, max: 20, step: 1, decimals: 0, unit: 'px' },
+        untuk_bottom_spacing: { min: 0, max: 30, step: 1, decimals: 0, unit: 'px' },
+        ttd_offset: { min: -20, max: 80, step: 1, decimals: 0, unit: 'px' },
+        ttd_x: { min: -50, max: 50, step: 1, decimals: 0, unit: 'px' },
+        ttd_date_to_jabatan: { min: 0, max: 25, step: 1, decimals: 0, unit: 'px' },
+        ttd_space_height: { min: 20, max: 120, step: 2, decimals: 0, unit: 'px' },
+        ttd_name_nip_spacing: { min: 0, max: 25, step: 1, decimals: 0, unit: 'px' }
+    };
+    const KEYS = Object.keys(STEP_CONFIG);
+    const AUTOFIT_VALUES = {
+        margin_top: 8, margin_bottom: 8, margin_left: 15, margin_right: 15,
+        font_size: 9.5, line_height: 1.0, kop_bottom_spacing: 4,
+        judul_top_spacing: -5, nomor_surat_spacing: 2, judul_bottom_spacing: 4,
+        dasar_top_spacing: 3, dasar_item_spacing: 1, dasar_bottom_spacing: 4,
+        memerintahkan_spacing: 4, pegawai_top_spacing: 3, pegawai_gap_spacing: 4,
+        pegawai_line_spacing: 1, untuk_top_spacing: 3, untuk_item_spacing: 1,
+        untuk_bottom_spacing: 5, ttd_offset: 4, ttd_x: 0, ttd_date_to_jabatan: 2,
+        ttd_space_height: 40, ttd_name_nip_spacing: 2, lock_ttd: 1
+    };
+
+    const frame = document.getElementById('pdfPreviewFrame');
+    const loading = document.getElementById('pdfPreviewLoading');
+    const downloadBtn = document.getElementById('downloadPdfBtn');
+    const printBtn = document.getElementById('printPdfBtn');
+    const status = document.getElementById('layoutStatus');
+    const lockCheckbox = document.getElementById('layoutLockTtd');
+    const applyBtn = document.getElementById('layoutApplyBtn');
+    const pageBadge = document.getElementById('pageBadge');
+    const saveBadge = document.getElementById('saveBadge');
+    const autoFitBtn = document.getElementById('layoutAutoFit');
+    const resetBtn = document.getElementById('layoutReset');
+    const expandAllBtn = document.getElementById('layoutExpandAll');
+    const sidebarToggle = document.getElementById('sidebarToggle');
+    const mainSidebar = document.getElementById('mainSidebar');
+    const inspector = document.getElementById('sptInspector');
+    const resizer = document.getElementById('layoutResizer');
+    const accordions = Array.from(document.querySelectorAll('.spt-acc'));
+    const ranges = {};
+    const numbers = {};
+    document.querySelectorAll('[data-layout-key]').forEach(function (el) {
+        ranges[el.dataset.layoutKey] = el;
+    });
+    document.querySelectorAll('[data-number-key]').forEach(function (el) {
+        numbers[el.dataset.numberKey] = el;
+    });
+
+    let state = Object.assign({}, INITIAL, { lock_ttd: INITIAL.lock_ttd ? 1 : 0 });
+    let templateDefaults = Object.assign({}, DEFAULTS, { lock_ttd: DEFAULTS.lock_ttd ? 1 : 0 });
+    let appliedState = Object.assign({}, state);
+    let hasSavedDefault = HAS_SAVED_DEFAULT;
+    let active = HAS_SAVED_DEFAULT;
+    let pageCount = null;
+    let currentBlobUrl = null;
+    let autoFitTimer = null;
+    let pendingCountUrl = null;
+    let restoredFromStorage = false;
+
+    function clamp(key, value) {
+        const cfg = STEP_CONFIG[key];
+        if (!cfg) return Number(value);
+        let next = Number(value);
+        if (!isFinite(next)) return Number(DEFAULTS[key] || 0);
+        next = Math.min(cfg.max, Math.max(cfg.min, next));
+        return Number(next.toFixed(cfg.decimals));
+    }
+
+    function fmt(key, value) {
+        const cfg = STEP_CONFIG[key];
+        if (!cfg) return String(value);
+        return Number(value).toFixed(cfg.decimals);
+    }
+
+    function matchesState(candidate) {
+        return KEYS.every(function (key) {
+            return Math.abs(Number(state[key]) - Number(candidate[key])) < 0.0001;
+        }) && (!!state.lock_ttd === !!candidate.lock_ttd);
+    }
+
+    function isDefaultState() {
+        return matchesState(templateDefaults);
+    }
+
+    function isAutoFitState() {
+        return matchesState(AUTOFIT_VALUES);
+    }
+
+    function isDirty() {
+        return KEYS.some(function (key) {
+            return Math.abs(Number(state[key]) - Number(appliedState[key])) > 0.0001;
+        }) || (!!state.lock_ttd !== !!appliedState.lock_ttd);
+    }
+
+    function updateDirtyUi() {
+        const dirty = isDirty();
+        if (applyBtn) {
+            applyBtn.classList.toggle('is-dirty', dirty);
+            const label = applyBtn.querySelector('[data-apply-label]');
+            if (label) label.textContent = dirty ? 'Terapkan Perubahan • Ada Perubahan' : 'Terapkan Perubahan';
+        }
+        if (saveBadge) {
+            saveBadge.textContent = dirty ? 'Belum Diterapkan' : 'Tersimpan';
+            saveBadge.className = 'spt-badge ' + (dirty ? 'spt-badge-amber' : 'spt-badge-emerald');
+        }
+    }
+
+    function updateAccordionBadges() {
+        accordions.forEach(function (acc) {
+            const keys = (acc.dataset.keys || '').split(/\s+/).filter(Boolean);
+            let changed = 0;
+            keys.forEach(function (key) {
+                if (key === 'lock_ttd') {
+                    if (!!state.lock_ttd !== !!templateDefaults.lock_ttd) changed++;
+                    return;
+                }
+                if (Math.abs(Number(state[key]) - Number(templateDefaults[key])) > 0.0001) changed++;
             });
-
-            let state = Object.assign({}, DEFAULTS, { lock_ttd: 0 });
-            let templateDefaults = Object.assign({}, DEFAULTS);
-            let hasSavedDefault = HAS_SAVED_DEFAULT;
-            let active = HAS_SAVED_DEFAULT;
-            let restoredFromStorage = false;
-
-            function clamp(key, value) {
-                const cfg = STEP_CONFIG[key];
-                if (!cfg) return Number(value);
-                value = Number(value);
-                if (!isFinite(value)) return Number(DEFAULTS[key] || 0);
-                value = Math.min(cfg.max, Math.max(cfg.min, value));
-                return Number(value.toFixed(cfg.decimals));
+            const dot = acc.querySelector('[data-acc-dot]');
+            const count = acc.querySelector('[data-acc-count]');
+            if (dot) dot.classList.toggle('spt-hidden', changed === 0);
+            if (count) {
+                count.textContent = String(changed);
+                count.classList.toggle('spt-hidden', changed === 0);
             }
+        });
+    }
 
-            function formatValue(key, value) {
-                const cfg = STEP_CONFIG[key];
-                if (!cfg) return String(value);
-                return Number(value).toFixed(cfg.decimals);
+    function updatePresetState() {
+        if (!autoFitBtn) return;
+        const isActive = isAutoFitState() && pageCount === 1 && !isDirty();
+        autoFitBtn.classList.toggle('is-active', isActive);
+    }
+
+    function updateStatus() {
+        if (!status) return;
+        if (!active) {
+            status.textContent = 'Pengaturan default template';
+            return;
+        }
+        if (isDirty()) {
+            status.textContent = 'Ada perubahan — belum diterapkan';
+            return;
+        }
+        if (isDefaultState()) {
+            status.textContent = hasSavedDefault ? 'Default template tersimpan' : 'Pengaturan default template';
+            return;
+        }
+        status.textContent = 'Kustom aktif — belum disimpan sebagai default';
+    }
+
+    function updatePageBadge(count) {
+        pageCount = (typeof count === 'number' && count > 0) ? count : null;
+        if (!pageBadge) return;
+        if (pageCount === null) {
+            pageBadge.textContent = 'Jumlah halaman tidak diketahui';
+            pageBadge.className = 'spt-badge spt-badge-neutral';
+        } else if (pageCount === 1) {
+            pageBadge.textContent = '1 Halaman — Ideal';
+            pageBadge.className = 'spt-badge spt-badge-emerald';
+        } else {
+            pageBadge.textContent = pageCount + ' Halaman — Belum Muat 1 Halaman';
+            pageBadge.className = 'spt-badge spt-badge-amber';
+        }
+        updatePresetState();
+    }
+
+    function syncUi() {
+        KEYS.forEach(function (key) {
+            if (ranges[key]) ranges[key].value = state[key];
+            if (numbers[key] && document.activeElement !== numbers[key]) {
+                numbers[key].value = fmt(key, state[key]);
             }
+        });
+        if (lockCheckbox) lockCheckbox.checked = !!state.lock_ttd;
+        updateAccordionBadges();
+        updateDirtyUi();
+        updatePresetState();
+        updateStatus();
+    }
 
-            // Accordion toggle click handlers
-            document.querySelectorAll('.layout-accordion-btn').forEach(function (btn) {
-                btn.addEventListener('click', function () {
-                    const targetId = btn.dataset.target;
-                    const content = document.getElementById(targetId);
-                    const icon = btn.querySelector('.layout-accordion-icon');
-                    if (content) {
-                        const isHidden = content.classList.toggle('hidden');
-                        if (icon) {
-                            icon.classList.toggle('bx-rotate-180', !isHidden);
-                        }
-                    }
-                });
-            });
+    function markDirty() {
+        active = true;
+        updateDirtyUi();
+        updateAccordionBadges();
+        updatePresetState();
+        updateStatus();
+    }
 
-            // Prioritas 1: parameter di URL.
-            const urlParams = new URLSearchParams(window.location.search);
-            if (urlParams.get('layout') === '1') {
-                active = true;
-                KEYS.forEach(function (key) {
-                    if (urlParams.has(key)) state[key] = clamp(key, urlParams.get(key));
-                });
-                state.lock_ttd = urlParams.get('lock_ttd') === '1' ? 1 : 0;
-            } else {
-                // Prioritas 2: pengaturan terakhir di localStorage.
-                try {
-                    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null');
-                    if (saved && saved.active) {
-                        KEYS.forEach(function (key) {
-                            if (saved.values && saved.values[key] !== undefined) {
-                                state[key] = clamp(key, saved.values[key]);
-                            }
-                        });
-                        state.lock_ttd = saved.values && saved.values.lock_ttd ? 1 : 0;
-                        active = true;
-                        restoredFromStorage = true;
-                    }
-                } catch (e) {
-                    // abaikan localStorage rusak
-                }
-            }
+    function setAccordion(acc, open) {
+        const body = acc.querySelector('.layout-accordion-content');
+        const head = acc.querySelector('.layout-accordion-btn');
+        if (!body) return;
+        body.classList.toggle('is-collapsed', !open);
+        if (head) head.setAttribute('aria-expanded', open ? 'true' : 'false');
+    }
 
-            function syncUi() {
-                KEYS.forEach(function (key) {
-                    if (inputs[key]) inputs[key].value = state[key];
-                    const output = document.querySelector('[data-value="' + key + '"]');
-                    if (output) output.textContent = formatValue(key, state[key]);
-                });
-                if (lockCheckbox) lockCheckbox.checked = !!state.lock_ttd;
-                updateStatus();
-            }
+    function anyAccordionOpen() {
+        return accordions.some(function (acc) {
+            const body = acc.querySelector('.layout-accordion-content');
+            return body && !body.classList.contains('is-collapsed');
+        });
+    }
 
-            function isDefaultState() {
-                const sameValues = KEYS.every(function (key) {
-                    return Math.abs(Number(state[key]) - Number(templateDefaults[key])) < 0.0001;
-                });
-                return sameValues && (!!state.lock_ttd === !!templateDefaults.lock_ttd);
-            }
+    function updateExpandAllLabel() {
+        if (expandAllBtn) expandAllBtn.textContent = anyAccordionOpen() ? 'Tutup Semua' : 'Buka Semua';
+    }
 
-            function updateStatus() {
-                if (!status) return;
-                if (!active) {
-                    status.textContent = 'Pengaturan default template';
-                    status.className = 'text-[11px] text-slate-400 text-center';
-                    return;
-                }
-                if (isDefaultState()) {
-                    status.textContent = hasSavedDefault
-                        ? 'Default template tersimpan'
-                        : 'Pengaturan default template';
-                    status.className = 'text-[11px] text-indigo-600 text-center font-medium';
-                    return;
-                }
-                status.textContent = 'Kustom aktif — belum disimpan sebagai default';
-                status.className = 'text-[11px] text-emerald-600 text-center font-medium';
-            }
+    function toggleAccordion(acc) {
+        const body = acc.querySelector('.layout-accordion-content');
+        const willOpen = body ? body.classList.contains('is-collapsed') : false;
+        accordions.forEach(function (other) {
+            if (other !== acc) setAccordion(other, false);
+        });
+        setAccordion(acc, willOpen);
+        updateExpandAllLabel();
+    }
 
-            function markActive() {
-                active = true;
-                updateStatus();
-            }
+    function showLoading(show) {
+        if (loading) loading.classList.toggle('spt-hidden', !show);
+    }
 
-            function buildParams(withInline) {
-                const params = new URLSearchParams();
-                params.set('id', SURAT_ID);
-                params.set('format', 'pdf');
-                if (withInline) params.set('inline', '1');
-                if (active) {
-                    params.set('layout', '1');
-                    KEYS.forEach(function (key) {
-                        params.set(key, state[key]);
-                    });
-                    params.set('lock_ttd', state.lock_ttd ? '1' : '0');
-                }
-                return params;
-            }
+    function setApplyLoading(isLoading) {
+        if (!applyBtn) return;
+        applyBtn.disabled = !!isLoading;
+        const spinner = applyBtn.querySelector('[data-apply-spinner]');
+        if (spinner) spinner.classList.toggle('spt-hidden', !isLoading);
+    }
 
-            function showLoading(show) {
-                if (!loading) return;
-                loading.classList.toggle('hidden', !show);
-            }
+    function setAutoFitLoading(isLoading) {
+        if (!autoFitBtn) return;
+        autoFitBtn.classList.toggle('is-loading', !!isLoading);
+        if (autoFitTimer) {
+            clearTimeout(autoFitTimer);
+            autoFitTimer = null;
+        }
+        if (isLoading) {
+            autoFitTimer = setTimeout(function () {
+                autoFitBtn.classList.remove('is-loading');
+            }, 15000);
+        }
+    }
 
-            function applyLayout() {
-                if (!active) {
-                    showLoading(false);
-                    return;
-                }
-
-                const cacheBuster = String(Date.now());
-                const previewParams = buildParams(true);
-                previewParams.set('_ts', cacheBuster);
-                showLoading(true);
-                frame.src = 'generate-surat.php?' + previewParams.toString();
-
-                const downloadParams = buildParams(false);
-                downloadParams.set('_ts', cacheBuster);
-                downloadBtn.href = 'generate-surat.php?' + downloadParams.toString();
-
-                try {
-                    localStorage.setItem(STORAGE_KEY, JSON.stringify({
-                        active: true,
-                        values: Object.assign({}, state, { lock_ttd: state.lock_ttd ? 1 : 0 })
-                    }));
-                } catch (e) {
-                    // localStorage bisa diblokir browser; preview tetap jalan.
-                }
-
-                const historyParams = buildParams(false);
-                historyParams.delete('format');
-                const nextUrl = new URL(window.location.href);
-                nextUrl.search = historyParams.toString();
-                window.history.replaceState(null, '', nextUrl.toString());
-            }
-
-            let debounceTimer = null;
-            function scheduleApply(delay) {
-                if (debounceTimer) clearTimeout(debounceTimer);
-                debounceTimer = setTimeout(applyLayout, typeof delay === 'number' ? delay : 450);
-            }
-
+    function buildParams(withInline) {
+        const params = new URLSearchParams();
+        params.set('id', SURAT_ID);
+        params.set('format', 'pdf');
+        if (withInline) params.set('inline', '1');
+        if (active) {
+            params.set('layout', '1');
             KEYS.forEach(function (key) {
-                const input = inputs[key];
-                if (!input) return;
-                input.addEventListener('input', function () {
-                    state[key] = clamp(key, input.value);
-                    const output = document.querySelector('[data-value="' + key + '"]');
-                    if (output) output.textContent = formatValue(key, state[key]);
-                    markActive();
-                    scheduleApply();
-                });
+                params.set(key, state[key]);
             });
+            params.set('lock_ttd', state.lock_ttd ? '1' : '0');
+        }
+        return params;
+    }
 
-            document.querySelectorAll('.layout-step').forEach(function (button) {
-                button.addEventListener('click', function () {
-                    const key = button.dataset.target;
-                    const direction = Number(button.dataset.dir || 0);
-                    const cfg = STEP_CONFIG[key];
-                    if (!cfg) return;
-                    state[key] = clamp(key, Number(state[key]) + (direction * cfg.step));
-                    if (inputs[key]) inputs[key].value = state[key];
-                    const output = document.querySelector('[data-value="' + key + '"]');
-                    if (output) output.textContent = formatValue(key, state[key]);
-                    markActive();
-                    scheduleApply(250);
-                });
+    function persistLocal() {
+        try {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify({
+                active: true,
+                values: Object.assign({}, state, { lock_ttd: state.lock_ttd ? 1 : 0 })
+            }));
+        } catch (e) {
+            // localStorage bisa diblokir browser; pratinjau tetap jalan.
+        }
+    }
+
+    function updateHistory() {
+        const historyParams = buildParams(false);
+        historyParams.delete('format');
+        const nextUrl = new URL(window.location.href);
+        nextUrl.search = historyParams.toString();
+        window.history.replaceState(null, '', nextUrl.toString());
+    }
+
+    function schedulePageCountRefresh(url) {
+        pendingCountUrl = url;
+        setTimeout(async function () {
+            if (!pendingCountUrl) return;
+            const target = pendingCountUrl;
+            pendingCountUrl = null;
+            const sep = target.indexOf('?') === -1 ? '?' : '&';
+            try {
+                const response = await fetch(target + sep + '_ts=' + Date.now(), { cache: 'no-store' });
+                const contentType = (response.headers.get('content-type') || '').toLowerCase();
+                if (response.ok && contentType.indexOf('application/pdf') !== -1) {
+                    const count = parseInt(response.headers.get('X-SPT-Page-Count') || '0', 10);
+                    updatePageBadge(count > 0 ? count : null);
+                }
+            } catch (e) {
+                // abaikan; badge tetap menampilkan status terakhir
+            }
+        }, 3500);
+    }
+
+    async function loadPreview(url, attempt) {
+        attempt = attempt || 0;
+        if (!frame) return false;
+        showLoading(true);
+        setApplyLoading(true);
+        const sep = url.indexOf('?') === -1 ? '?' : '&';
+        try {
+            const response = await fetch(url + sep + '_ts=' + Date.now(), {
+                cache: 'no-store',
+                credentials: 'same-origin'
             });
-
-            if (lockCheckbox) {
-                lockCheckbox.addEventListener('change', function () {
-                    state.lock_ttd = lockCheckbox.checked ? 1 : 0;
-                    markActive();
-                    scheduleApply(250);
-                });
-            }
-
-            const applyBtn = document.getElementById('layoutApplyBtn');
-            if (applyBtn) {
-                applyBtn.addEventListener('click', function () {
-                    if (debounceTimer) clearTimeout(debounceTimer);
-                    applyLayout();
-                });
-            }
-
-            if (downloadBtn) {
-                downloadBtn.addEventListener('click', function () {
-                    if (debounceTimer) {
-                        clearTimeout(debounceTimer);
-                        applyLayout();
+            const contentType = (response.headers.get('content-type') || '').toLowerCase();
+            if (response.ok && contentType.indexOf('application/pdf') !== -1) {
+                const count = parseInt(response.headers.get('X-SPT-Page-Count') || '0', 10);
+                const blob = await response.blob();
+                if (blob && blob.size > 0) {
+                    const nextBlobUrl = URL.createObjectURL(blob);
+                    if (currentBlobUrl) {
+                        try { URL.revokeObjectURL(currentBlobUrl); } catch (e) {}
                     }
-                });
-            }
-
-            const saveDefaultBtn = document.getElementById('layoutSaveDefaultBtn');
-            if (saveDefaultBtn) {
-                saveDefaultBtn.addEventListener('click', async function () {
-                    if (!TEMPLATE_ID) {
-                        if (window.Swal) {
-                            Swal.fire({ icon: 'error', title: 'Template tidak diketahui', text: 'Pengaturan tidak dapat disimpan karena template tidak terhubung ke database.' });
-                        }
-                        return;
-                    }
-
-                    const originalHtml = saveDefaultBtn.innerHTML;
-                    saveDefaultBtn.disabled = true;
-                    saveDefaultBtn.innerHTML = '<span class="animate-spin rounded-full h-4 w-4 border-2 border-indigo-600 border-t-transparent"></span><span>Menyimpan…</span>';
-
-                    try {
-                        const payload = Object.assign({}, state, { lock_ttd: state.lock_ttd ? 1 : 0 });
-                        const response = await fetch('save-template-layout.php', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ template_id: TEMPLATE_ID, settings: payload })
-                        });
-                        const text = await response.text();
-                        let result;
-                        try {
-                            result = JSON.parse(text);
-                        } catch (parseError) {
-                            throw new Error('Respons server tidak valid.');
-                        }
-                        if (!response.ok || !result.success) {
-                            throw new Error(result.message || 'Gagal menyimpan pengaturan.');
-                        }
-
-                        templateDefaults = Object.assign({}, state, { lock_ttd: state.lock_ttd ? 1 : 0 });
-                        hasSavedDefault = true;
-                        active = true;
-                        applyLayout();
-                        updateStatus();
-
-                        if (window.Swal) {
-                            Swal.fire({
-                                icon: 'success',
-                                title: 'Tersimpan',
-                                text: 'Pengaturan ini sekarang menjadi default untuk template tersebut.',
-                                timer: 2200,
-                                showConfirmButton: false
-                            });
-                        }
-                    } catch (error) {
-                        if (window.Swal) {
-                            Swal.fire({ icon: 'error', title: 'Gagal menyimpan', text: error.message || 'Terjadi kesalahan.' });
-                        } else {
-                            alert(error.message || 'Gagal menyimpan pengaturan.');
-                        }
-                    } finally {
-                        saveDefaultBtn.disabled = false;
-                        saveDefaultBtn.innerHTML = originalHtml;
-                    }
-                });
-            }
-
-            const autoFit = document.getElementById('layoutAutoFit');
-            if (autoFit) {
-                autoFit.addEventListener('click', function () {
-                    // Skala kompresi proporsional agar dokumen pas 1 halaman
-                    state.margin_top = 8;
-                    state.margin_bottom = 8;
-                    state.margin_left = 15;
-                    state.margin_right = 15;
-                    state.font_size = 9.5;
-                    state.line_height = 1.0;
-                    state.kop_bottom_spacing = 4;
-                    state.judul_top_spacing = -5;
-                    state.nomor_surat_spacing = 2;
-                    state.judul_bottom_spacing = 4;
-                    state.dasar_top_spacing = 3;
-                    state.dasar_item_spacing = 1;
-                    state.dasar_bottom_spacing = 4;
-                    state.memerintahkan_spacing = 4;
-                    state.pegawai_top_spacing = 3;
-                    state.pegawai_gap_spacing = 4;
-                    state.pegawai_line_spacing = 1;
-                    state.untuk_top_spacing = 3;
-                    state.untuk_item_spacing = 1;
-                    state.untuk_bottom_spacing = 5;
-                    state.ttd_offset = 4;
-                    state.ttd_x = 0;
-                    state.ttd_date_to_jabatan = 2;
-                    state.ttd_space_height = 40;
-                    state.ttd_name_nip_spacing = 2;
-                    state.lock_ttd = 1;
-
-                    markActive();
-                    syncUi();
-                    if (debounceTimer) clearTimeout(debounceTimer);
-                    applyLayout();
-                });
-            }
-
-            const resetBtn = document.getElementById('layoutReset');
-            if (resetBtn) {
-                resetBtn.addEventListener('click', function () {
-                    active = hasSavedDefault;
-                    state = Object.assign({}, templateDefaults, { lock_ttd: templateDefaults.lock_ttd ? 1 : 0 });
-                    try {
-                        localStorage.removeItem(STORAGE_KEY);
-                    } catch (e) {
-                        // ignore
-                    }
-                    syncUi();
-                    if (debounceTimer) clearTimeout(debounceTimer);
-                    const params = new URLSearchParams();
-                    params.set('id', SURAT_ID);
-                    params.set('format', 'pdf');
-                    params.set('inline', '1');
-                    params.set('_ts', String(Date.now()));
-                    showLoading(true);
-                    frame.src = 'generate-surat.php?' + params.toString();
-
-                    downloadBtn.href = 'generate-surat.php?id=' + encodeURIComponent(SURAT_ID) + '&format=pdf';
-                    const nextUrl = new URL(window.location.href);
-                    nextUrl.search = 'id=' + encodeURIComponent(SURAT_ID);
-                    window.history.replaceState(null, '', nextUrl.toString());
+                    currentBlobUrl = nextBlobUrl;
+                    frame.src = nextBlobUrl;
+                    updatePageBadge(count > 0 ? count : null);
+                    appliedState = Object.assign({}, state, { lock_ttd: state.lock_ttd ? 1 : 0 });
+                    updateDirtyUi();
+                    updateAccordionBadges();
+                    updatePresetState();
                     updateStatus();
-                });
-            }
-
-            const toggle = document.getElementById('layoutToggle');
-            const panelBody = document.getElementById('layoutPanelBody');
-            const toggleIcon = document.getElementById('layoutToggleIcon');
-            if (toggle && panelBody) {
-                toggle.addEventListener('click', function () {
-                    const hidden = panelBody.classList.toggle('hidden');
-                    if (toggleIcon) toggleIcon.classList.toggle('bx-rotate-180', hidden);
-                });
-            }
-
-            if (frame) {
-                frame.addEventListener('load', function () {
                     showLoading(false);
+                    setApplyLoading(false);
+                    setAutoFitLoading(false);
+                    return true;
+                }
+            }
+
+            // Bukan PDF (mis. halaman retry Word COM). Biarkan iframe menanganinya.
+            frame.src = url;
+            showLoading(false);
+            setApplyLoading(false);
+            setAutoFitLoading(false);
+            schedulePageCountRefresh(url);
+            return false;
+        } catch (error) {
+            frame.src = url;
+            showLoading(false);
+            setApplyLoading(false);
+            setAutoFitLoading(false);
+            return false;
+        }
+    }
+
+    async function applyLayout() {
+        if (!frame) return false;
+        active = true;
+        const previewUrl = 'generate-surat.php?' + buildParams(true).toString();
+        const downloadUrl = 'generate-surat.php?' + buildParams(false).toString();
+        if (downloadBtn) downloadBtn.href = downloadUrl;
+        persistLocal();
+        updateHistory();
+        return loadPreview(previewUrl);
+    }
+
+    function resetKey(key) {
+        if (!key) return;
+        if (key === 'lock_ttd') {
+            state.lock_ttd = templateDefaults.lock_ttd ? 1 : 0;
+            if (lockCheckbox) lockCheckbox.checked = !!state.lock_ttd;
+        } else if (STEP_CONFIG[key]) {
+            state[key] = clamp(key, templateDefaults[key]);
+            if (ranges[key]) ranges[key].value = state[key];
+            if (numbers[key]) numbers[key].value = fmt(key, state[key]);
+        }
+        markDirty();
+    }
+
+    // Restore state: prioritas URL, lalu localStorage.
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get('layout') === '1') {
+        active = true;
+        KEYS.forEach(function (key) {
+            if (urlParams.has(key)) state[key] = clamp(key, urlParams.get(key));
+        });
+        state.lock_ttd = urlParams.get('lock_ttd') === '1' ? 1 : 0;
+        appliedState = Object.assign({}, state);
+    } else {
+        try {
+            const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null');
+            if (saved && saved.active) {
+                KEYS.forEach(function (key) {
+                    if (saved.values && saved.values[key] !== undefined) {
+                        state[key] = clamp(key, saved.values[key]);
+                    }
                 });
+                state.lock_ttd = saved.values && saved.values.lock_ttd ? 1 : 0;
+                active = true;
+                restoredFromStorage = true;
             }
+        } catch (e) {
+            // localStorage rusak; abaikan.
+        }
+    }
 
+    // Accordion: single-expand + buka/tutup semua.
+    accordions.forEach(function (acc) {
+        const head = acc.querySelector('.layout-accordion-btn');
+        if (head) head.addEventListener('click', function () { toggleAccordion(acc); });
+    });
+    if (expandAllBtn) {
+        expandAllBtn.addEventListener('click', function () {
+            const open = !anyAccordionOpen();
+            accordions.forEach(function (acc) { setAccordion(acc, open); });
+            updateExpandAllLabel();
+        });
+    }
+    updateExpandAllLabel();
+
+    // Slider + number input (two-way binding).
+    KEYS.forEach(function (key) {
+        const range = ranges[key];
+        if (range) {
+            range.addEventListener('input', function () {
+                const value = clamp(key, range.value);
+                state[key] = value;
+                if (numbers[key]) numbers[key].value = fmt(key, value);
+                markDirty();
+            });
+            range.addEventListener('dblclick', function () { resetKey(key); });
+        }
+
+        const number = numbers[key];
+        if (number) {
+            number.addEventListener('input', function () {
+                const raw = number.value.trim();
+                if (raw === '' || raw === '-' || raw === '.' || raw === '-.') return;
+                const parsed = Number(raw);
+                if (!isFinite(parsed)) return;
+                state[key] = clamp(key, parsed);
+                if (range) range.value = state[key];
+                markDirty();
+            });
+            number.addEventListener('blur', function () {
+                const value = clamp(key, number.value);
+                state[key] = value;
+                number.value = fmt(key, value);
+                if (range) range.value = value;
+                markDirty();
+            });
+            number.addEventListener('keydown', function (event) {
+                if (event.key === 'Enter') {
+                    event.preventDefault();
+                    number.blur();
+                }
+            });
+        }
+    });
+
+    // Stepper - / +
+    document.querySelectorAll('.layout-step').forEach(function (button) {
+        button.addEventListener('click', function () {
+            const key = button.dataset.target;
+            const cfg = STEP_CONFIG[key];
+            if (!cfg) return;
+            const direction = Number(button.dataset.dir || 0);
+            state[key] = clamp(key, Number(state[key]) + direction * cfg.step);
+            if (ranges[key]) ranges[key].value = state[key];
+            if (numbers[key]) numbers[key].value = fmt(key, state[key]);
+            markDirty();
+        });
+    });
+
+    // Reset per-item
+    document.querySelectorAll('.layout-reset').forEach(function (button) {
+        button.addEventListener('click', function () { resetKey(button.dataset.target); });
+    });
+
+    if (lockCheckbox) {
+        lockCheckbox.addEventListener('change', function () {
+            state.lock_ttd = lockCheckbox.checked ? 1 : 0;
+            markDirty();
+        });
+    }
+
+    if (applyBtn) {
+        applyBtn.addEventListener('click', function () {
+            if (!applyBtn.disabled) applyLayout();
+        });
+    }
+
+    // Keyboard shortcut Ctrl/Cmd + Enter
+    document.addEventListener('keydown', function (event) {
+        if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
+            event.preventDefault();
+            if (applyBtn && !applyBtn.disabled) applyLayout();
+        }
+    });
+
+    if (downloadBtn) {
+        downloadBtn.addEventListener('click', async function (event) {
+            if (!isDirty()) return;
+            event.preventDefault();
+            await applyLayout();
+            window.location.href = downloadBtn.href;
+        });
+    }
+
+    if (printBtn) {
+        printBtn.addEventListener('click', async function () {
+            const win = window.open('', '_blank');
+            if (isDirty()) await applyLayout();
+            const targetUrl = currentBlobUrl || ('generate-surat.php?' + buildParams(true).toString());
+            if (win) {
+                win.location.href = targetUrl;
+                setTimeout(function () {
+                    try { win.print(); } catch (e) {}
+                }, 1500);
+            } else {
+                window.open(targetUrl, '_blank');
+            }
+        });
+    }
+
+    const autoFit = autoFitBtn;
+    if (autoFit) {
+        autoFit.addEventListener('click', function () {
+            KEYS.forEach(function (key) { state[key] = clamp(key, AUTOFIT_VALUES[key]); });
+            state.lock_ttd = AUTOFIT_VALUES.lock_ttd;
             syncUi();
+            markDirty();
+            setAutoFitLoading(true);
+            applyLayout();
+        });
+    }
 
-            if (restoredFromStorage) {
+    if (resetBtn) {
+        resetBtn.addEventListener('click', function () {
+            state = Object.assign({}, templateDefaults, { lock_ttd: templateDefaults.lock_ttd ? 1 : 0 });
+            active = hasSavedDefault;
+            try { localStorage.removeItem(STORAGE_KEY); } catch (e) {}
+            syncUi();
+            appliedState = Object.assign({}, state);
+            updateDirtyUi();
+            if (active) {
                 applyLayout();
+            } else {
+                const nextUrl = new URL(window.location.href);
+                nextUrl.search = 'id=' + encodeURIComponent(SURAT_ID);
+                window.history.replaceState(null, '', nextUrl.toString());
+                if (downloadBtn) {
+                    downloadBtn.href = 'generate-surat.php?id=' + encodeURIComponent(SURAT_ID) + '&format=pdf';
+                }
+                loadPreview('generate-surat.php?id=' + encodeURIComponent(SURAT_ID) + '&format=pdf&inline=1');
             }
-        })();
-        </script>
+        });
+    }
+
+    const saveDefaultBtn = document.getElementById('layoutSaveDefaultBtn');
+    if (saveDefaultBtn) {
+        saveDefaultBtn.addEventListener('click', async function () {
+            if (!TEMPLATE_ID) {
+                if (window.Swal) {
+                    Swal.fire({ icon: 'error', title: 'Template tidak diketahui', text: 'Pengaturan tidak dapat disimpan karena template tidak terhubung ke database.' });
+                }
+                return;
+            }
+
+            const originalHtml = saveDefaultBtn.innerHTML;
+            saveDefaultBtn.disabled = true;
+            saveDefaultBtn.innerHTML = '<span class="spt-btn-spinner" style="border-color:#a7f3d0;border-top-color:#047857;"></span><span>Menyimpan…</span>';
+
+            try {
+                const payload = Object.assign({}, state, { lock_ttd: state.lock_ttd ? 1 : 0 });
+                const response = await fetch('save-template-layout.php', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ template_id: TEMPLATE_ID, settings: payload })
+                });
+                const text = await response.text();
+                let result;
+                try {
+                    result = JSON.parse(text);
+                } catch (parseError) {
+                    throw new Error('Respons server tidak valid.');
+                }
+                if (!response.ok || !result.success) {
+                    throw new Error(result.message || 'Gagal menyimpan pengaturan.');
+                }
+
+                templateDefaults = Object.assign({}, state, { lock_ttd: state.lock_ttd ? 1 : 0 });
+                hasSavedDefault = true;
+                active = true;
+                appliedState = Object.assign({}, state);
+                syncUi();
+                applyLayout();
+
+                if (window.Swal) {
+                    Swal.fire({
+                        icon: 'success',
+                        title: 'Tersimpan',
+                        text: 'Pengaturan ini sekarang menjadi default untuk template tersebut.',
+                        timer: 2200,
+                        showConfirmButton: false
+                    });
+                }
+            } catch (error) {
+                if (window.Swal) {
+                    Swal.fire({ icon: 'error', title: 'Gagal menyimpan', text: error.message || 'Terjadi kesalahan.' });
+                } else {
+                    alert(error.message || 'Gagal menyimpan pengaturan.');
+                }
+            } finally {
+                saveDefaultBtn.disabled = false;
+                saveDefaultBtn.innerHTML = originalHtml;
+            }
+        });
+    }
+
+    // Sidebar navigasi: auto-collapse saat halaman dibuka, bisa di-toggle.
+    function readSidebarCollapsed() {
+        try { return localStorage.getItem(SIDEBAR_KEY) !== '0'; } catch (e) { return true; }
+    }
+    function writeSidebarCollapsed(collapsed) {
+        try { localStorage.setItem(SIDEBAR_KEY, collapsed ? '1' : '0'); } catch (e) {}
+    }
+    function applySidebarState() {
+        if (!mainSidebar) return;
+        if (window.innerWidth < 768) {
+            mainSidebar.classList.remove('spt-sidebar-collapsed');
+            return;
+        }
+        mainSidebar.classList.toggle('spt-sidebar-collapsed', readSidebarCollapsed());
+    }
+    applySidebarState();
+    if (sidebarToggle) {
+        sidebarToggle.addEventListener('click', function () {
+            if (!mainSidebar) return;
+            if (window.innerWidth < 768) {
+                mainSidebar.classList.toggle('hidden');
+                mainSidebar.classList.toggle('fixed');
+                mainSidebar.classList.toggle('inset-0');
+                mainSidebar.classList.toggle('w-full');
+                mainSidebar.classList.toggle('z-50');
+                return;
+            }
+            writeSidebarCollapsed(!readSidebarCollapsed());
+            applySidebarState();
+        });
+    }
+    window.addEventListener('resize', applySidebarState);
+
+    // Resizer panel inspector.
+    (function initResizer() {
+        if (!resizer || !inspector) return;
+        let dragging = false;
+        function setWidth(width) {
+            const clamped = Math.min(520, Math.max(320, width));
+            inspector.style.width = clamped + 'px';
+            inspector.style.flexBasis = clamped + 'px';
+            try { localStorage.setItem(WIDTH_KEY, String(clamped)); } catch (e) {}
+        }
+        try {
+            const savedWidth = parseInt(localStorage.getItem(WIDTH_KEY) || '', 10);
+            if (savedWidth) setWidth(savedWidth);
+        } catch (e) {}
+        resizer.addEventListener('pointerdown', function (event) {
+            if (window.innerWidth < 1024) return;
+            dragging = true;
+            resizer.classList.add('is-dragging');
+            try { resizer.setPointerCapture(event.pointerId); } catch (e) {}
+            document.body.style.cursor = 'col-resize';
+            document.body.style.userSelect = 'none';
+        });
+        resizer.addEventListener('pointermove', function (event) {
+            if (!dragging) return;
+            const rect = inspector.getBoundingClientRect();
+            setWidth(event.clientX - rect.left);
+        });
+        function stopDrag() {
+            dragging = false;
+            resizer.classList.remove('is-dragging');
+            document.body.style.cursor = '';
+            document.body.style.userSelect = '';
+        }
+        resizer.addEventListener('pointerup', stopDrag);
+        resizer.addEventListener('pointercancel', stopDrag);
+    })();
+
+    if (frame) {
+        frame.addEventListener('load', function () {
+            if (frame.src && frame.src !== 'about:blank') {
+                showLoading(false);
+                setApplyLoading(false);
+            }
+        });
+    }
+
+    syncUi();
+
+    if (restoredFromStorage) {
+        applyLayout();
+    } else {
+        loadPreview(INITIAL_PREVIEW_URL);
+    }
+})();
+</script>
         <?php
         include '../includes/footer.php';
         exit;
@@ -3136,6 +3523,7 @@ foreach ($tempCandidates as $candidate) {
 Settings::setTempDir($tempDir);
     $tempDocx = $tempDir . DIRECTORY_SEPARATOR . 'spt_' . uniqid() . '.docx';
     $templateProcessor->saveAs($tempDocx);
+    spt_fix_docx_typos($tempDocx);
 
     // Salinan DOCX yang sudah disesuaikan layout, dipakai untuk Word COM/LibreOffice.
     // File asli tetap disimpan untuk download Word dan fallback Dompdf (CSS injection).
@@ -3275,6 +3663,10 @@ Settings::setTempDir($tempDir);
                     ob_clean();
                 }
                 header('Content-Type: application/pdf');
+                $sptPageCount = spt_pdf_page_count($tempPdf);
+                if ($sptPageCount > 0) {
+                    header('X-SPT-Page-Count: ' . $sptPageCount);
+                }
                 if ($inlinePdf) {
                     header('Content-Disposition: inline; filename="Surat_Tugas_' . preg_replace('/[^a-zA-Z0-9\-_]/', '_', $surat['nomor_surat']) . '.pdf"');
                 } else {
