@@ -641,6 +641,289 @@ function spt_layout_add_keep_flag(DOMElement $paragraph, $flag, DOMDocument $dom
     ]);
 }
 
+/**
+ * Rata-atas semua sel tabel agar label dan isi (mis. "Dasar", biodata
+ * pegawai) tetap sejajar di baris pertama.
+ */
+function spt_layout_align_tables_top(DOMDocument $document)
+{
+    $ns = spt_layout_w_ns();
+    $xpath = new DOMXPath($document);
+    $xpath->registerNamespace('w', $ns);
+
+    $tcPrOrder = [
+        'cnfStyle', 'tcW', 'gridSpan', 'hMerge', 'vMerge', 'tcBorders', 'shd',
+        'noWrap', 'tcMar', 'textDirection', 'tcFitText', 'vAlign', 'hideMark',
+        'headers', 'cellIns', 'cellDel', 'cellMerge', 'tcPrChange',
+    ];
+
+    foreach ($xpath->query('//w:tbl//w:tc') as $cell) {
+        $tcPr = spt_layout_child($cell, 'tcPr');
+        if (!$tcPr) {
+            $tcPr = $document->createElementNS($ns, 'w:tcPr');
+            if ($cell->firstChild) {
+                $cell->insertBefore($tcPr, $cell->firstChild);
+            } else {
+                $cell->appendChild($tcPr);
+            }
+        }
+        $vAlign = spt_layout_child($tcPr, 'vAlign');
+        if (!$vAlign) {
+            $vAlign = $document->createElementNS($ns, 'w:vAlign');
+            spt_layout_insert_ordered($tcPr, $vAlign, $tcPrOrder);
+        }
+        $vAlign->setAttributeNS($ns, 'w:val', 'top');
+    }
+
+    // Tinggi baris "exact" bisa memotong teks saat font/spasi dikompres.
+    // Ubah ke "atLeast" agar baris tumbuh mengikuti isi.
+    foreach ($xpath->query('//w:tbl//w:tr/w:trPr/w:trHeight') as $rowHeight) {
+        $rowHeight->setAttributeNS($ns, 'w:hRule', 'atLeast');
+    }
+}
+
+/**
+ * Hitung line-height aman (twips) untuk judul/nomor berdasarkan ukuran
+ * huruf terbesar di paragraf tersebut.
+ */
+function spt_layout_heading_line_twips(DOMElement $paragraph, $multiplier = 1.3)
+{
+    $ns = spt_layout_w_ns();
+    $maxHalfPoints = 0;
+    foreach ($paragraph->getElementsByTagNameNS($ns, 'sz') as $sizeNode) {
+        $maxHalfPoints = max($maxHalfPoints, (int)$sizeNode->getAttributeNS($ns, 'val'));
+    }
+    if ($maxHalfPoints <= 0) {
+        $maxHalfPoints = 24; // fallback 12 pt
+    }
+
+    $multiplier = max(1.3, (float)$multiplier);
+    return (int)round(($maxHalfPoints / 2) * $multiplier * 20);
+}
+
+/**
+ * Normalisasi template tanpa mengubah pengaturan layout pengguna:
+ * - bersihkan kata berulang pada teks template (termasuk "tentang tentang"),
+ * - pastikan judul "SURAT TUGAS" dan "Nomor" tidak bertumpuk,
+ * - ratakan semua sel tabel ke atas.
+ * Fungsi ini selalu dipanggil agar preview default pun rapi.
+ */
+function spt_normalize_docx($docxPath)
+{
+    if (!class_exists('ZipArchive') || !is_file($docxPath)) {
+        return false;
+    }
+
+    $zip = new ZipArchive();
+    if ($zip->open($docxPath) !== true) {
+        return false;
+    }
+
+    $documentXml = $zip->getFromName('word/document.xml');
+    if ($documentXml === false) {
+        $zip->close();
+        return false;
+    }
+
+    $documentXml = spt_fix_common_typos($documentXml);
+    $document = spt_layout_load_dom($documentXml);
+    if (!$document) {
+        $zip->close();
+        return false;
+    }
+
+    $ns = spt_layout_w_ns();
+    $xpath = new DOMXPath($document);
+    $xpath->registerNamespace('w', $ns);
+    $xpath->registerNamespace('v', 'urn:schemas-microsoft-com:vml');
+
+    // 1. Bersihkan kata berulang di dalam setiap run teks.
+    foreach ($xpath->query('//w:t') as $textNode) {
+        $original = $textNode->textContent;
+        $cleaned = spt_clean_repeated_words($original);
+        if ($cleaned !== $original) {
+            $textNode->textContent = $cleaned;
+        }
+    }
+
+    // 1b. Bersihkan kata berulang yang terpecah di antara dua run berdekatan.
+    foreach ($xpath->query('//w:p') as $paragraph) {
+        $textNodes = [];
+        foreach ($xpath->query('.//w:t', $paragraph) as $textNode) {
+            $textNodes[] = $textNode;
+        }
+        for ($i = 0; $i < count($textNodes) - 1; $i++) {
+            $left = $textNodes[$i]->textContent;
+            $right = $textNodes[$i + 1]->textContent;
+            if (!preg_match('/\b([\p{L}]+)\s*$/u', $left, $mLeft)) {
+                continue;
+            }
+            if (!preg_match('/^\s*([\p{L}]+)\b/u', $right, $mRight)) {
+                continue;
+            }
+            if (mb_strtolower($mLeft[1], 'UTF-8') !== mb_strtolower($mRight[1], 'UTF-8')) {
+                continue;
+            }
+            $newLeft = preg_replace('/\s*\b' . preg_quote($mLeft[1], '/') . '\s*$/u', '', $left);
+            if ($newLeft !== null && $newLeft !== $left) {
+                $textNodes[$i]->textContent = $newLeft;
+            }
+        }
+    }
+
+    // 2. Amankan jarak judul "SURAT TUGAS" ke "Nomor".
+    $paragraphs = [];
+    foreach ($xpath->query('//w:body//w:p') as $paragraph) {
+        $paragraphs[] = $paragraph;
+    }
+
+    $titleIndex = null;
+    $numberIndex = null;
+    foreach ($paragraphs as $index => $paragraph) {
+        $text = spt_layout_paragraph_text($paragraph);
+        if ($text === '') {
+            continue;
+        }
+        if ($titleIndex === null && stripos($text, 'SURAT TUGAS') !== false) {
+            $titleIndex = $index;
+            continue;
+        }
+        if ($titleIndex !== null && $numberIndex === null && stripos($text, 'Nomor') !== false && $index <= $titleIndex + 3) {
+            $numberIndex = $index;
+        }
+    }
+
+    // 2. Baris kop dengan line-height "exact" yang terlalu kecil bisa terpotong.
+    if ($titleIndex !== null) {
+        for ($i = 0; $i < $titleIndex; $i++) {
+            if (!isset($paragraphs[$i]) || spt_layout_paragraph_text($paragraphs[$i]) === '') {
+                continue;
+            }
+            $spacing = spt_layout_spacing($paragraphs[$i], $document);
+            if (!$spacing->hasAttributeNS($ns, 'lineRule')) {
+                continue;
+            }
+            if (strtolower($spacing->getAttributeNS($ns, 'lineRule')) !== 'exact') {
+                continue;
+            }
+            $line = $spacing->hasAttributeNS($ns, 'line') ? (int)$spacing->getAttributeNS($ns, 'line') : 0;
+            $singleLine = spt_layout_heading_line_twips($paragraphs[$i], 1.0);
+            if ($line < $singleLine) {
+                $spacing->setAttributeNS($ns, 'w:line', (string)max(240, $singleLine));
+                $spacing->setAttributeNS($ns, 'w:lineRule', 'auto');
+            }
+        }
+    }
+
+    // 2b. Garis kop pada template berupa shape absolut sehingga bisa menabrak
+    // teks saat spasi berubah. Ganti dengan border paragraf yang mengikuti teks.
+    $linePicts = [];
+    foreach ($xpath->query('//w:pict') as $pict) {
+        if ($xpath->query('.//v:imagedata', $pict)->length > 0) {
+            continue;
+        }
+        if ($xpath->query('.//w:txbxContent', $pict)->length > 0) {
+            continue;
+        }
+        $lineShapes = 0;
+        foreach ($xpath->query('.//v:shape', $pict) as $shape) {
+            if ($shape->hasAttribute('path') && $shape->hasAttribute('strokeweight')) {
+                $lineShapes++;
+            }
+        }
+        if ($lineShapes > 0) {
+            $linePicts[] = $pict;
+        }
+    }
+
+    if (!empty($linePicts)) {
+        foreach ($linePicts as $pict) {
+            if ($pict->parentNode) {
+                $pict->parentNode->removeChild($pict);
+            }
+        }
+
+        $kopEndIndex = null;
+        if ($titleIndex !== null) {
+            for ($i = $titleIndex - 1; $i >= 0; $i--) {
+                if (isset($paragraphs[$i]) && spt_layout_paragraph_text($paragraphs[$i]) !== '') {
+                    $kopEndIndex = $i;
+                    break;
+                }
+            }
+        }
+
+        $alreadyHasKopBorder = false;
+        if ($kopEndIndex !== null && isset($paragraphs[$kopEndIndex])) {
+            $kopProperties = spt_layout_child($paragraphs[$kopEndIndex], 'pPr');
+            if ($kopProperties && spt_layout_child($kopProperties, 'pBdr')) {
+                $alreadyHasKopBorder = true;
+            }
+        }
+
+        if (!$alreadyHasKopBorder && $kopEndIndex !== null && isset($paragraphs[$kopEndIndex])) {
+            $ruleParagraph = $document->createElementNS($ns, 'w:p');
+            $ruleProperties = $document->createElementNS($ns, 'w:pPr');
+
+            $paragraphBorder = $document->createElementNS($ns, 'w:pBdr');
+            $bottomBorder = $document->createElementNS($ns, 'w:bottom');
+            $bottomBorder->setAttributeNS($ns, 'w:val', 'single');
+            $bottomBorder->setAttributeNS($ns, 'w:sz', '12');
+            $bottomBorder->setAttributeNS($ns, 'w:space', '0');
+            $bottomBorder->setAttributeNS($ns, 'w:color', 'auto');
+            $paragraphBorder->appendChild($bottomBorder);
+            $ruleProperties->appendChild($paragraphBorder);
+
+            $ruleSpacing = $document->createElementNS($ns, 'w:spacing');
+            $ruleSpacing->setAttributeNS($ns, 'w:before', '0');
+            $ruleSpacing->setAttributeNS($ns, 'w:after', '0');
+            $ruleSpacing->setAttributeNS($ns, 'w:line', '20');
+            $ruleSpacing->setAttributeNS($ns, 'w:lineRule', 'exact');
+            $ruleProperties->appendChild($ruleSpacing);
+
+            $ruleParagraph->appendChild($ruleProperties);
+            $paragraphs[$kopEndIndex]->parentNode->insertBefore(
+                $ruleParagraph,
+                $paragraphs[$kopEndIndex]->nextSibling
+            );
+        }
+    }
+
+    foreach ([$titleIndex, $numberIndex] as $index) {
+        if ($index === null || !isset($paragraphs[$index])) {
+            continue;
+        }
+        $paragraph = $paragraphs[$index];
+        $spacing = spt_layout_spacing($paragraph, $document);
+        $currentLine = $spacing->hasAttributeNS($ns, 'line') ? (int)$spacing->getAttributeNS($ns, 'line') : 0;
+        $safeLine = spt_layout_heading_line_twips($paragraph, 1.3);
+        if ($currentLine < $safeLine) {
+            $spacing->setAttributeNS($ns, 'w:line', (string)$safeLine);
+            $spacing->setAttributeNS($ns, 'w:lineRule', 'auto');
+        }
+        foreach (['before', 'after'] as $attribute) {
+            if ($spacing->hasAttributeNS($ns, $attribute) && (int)$spacing->getAttributeNS($ns, $attribute) < 0) {
+                $spacing->setAttributeNS($ns, 'w:' . $attribute, '0');
+            }
+        }
+    }
+
+    if ($numberIndex !== null && isset($paragraphs[$numberIndex])) {
+        $spacing = spt_layout_spacing($paragraphs[$numberIndex], $document);
+        $currentBefore = $spacing->hasAttributeNS($ns, 'before') ? (int)$spacing->getAttributeNS($ns, 'before') : 0;
+        if ($currentBefore < 60) {
+            $spacing->setAttributeNS($ns, 'w:before', '60');
+        }
+    }
+
+    // 3. Semua sel tabel rata atas.
+    spt_layout_align_tables_top($document);
+
+    $zip->addFromString('word/document.xml', $document->saveXML());
+    $zip->close();
+    return true;
+}
+
 function spt_layout_detect_dominant_font_size(DOMDocument $document)
 {
     $xpath = new DOMXPath($document);
@@ -905,7 +1188,7 @@ function spt_layout_apply_to_docx($docxPath, array $settings)
 
         // Judul "SURAT TUGAS" dan "Nomor" harus selalu punya line-height aman
         // agar tidak saling menimpa meskipun jarak antar keduanya disetel minimum.
-        $headingLineTwips = (int)round(max(1.3, (float)($settings['line_height'] ?? 1.0)) * 240);
+        $headingMultiplier = max(1.3, (float)($settings['line_height'] ?? 1.0));
         foreach ([$idxJudul, $idxNomor] as $idxHeading) {
             if ($idxHeading === null || !isset($paragraphs[$idxHeading])) {
                 continue;
@@ -914,6 +1197,7 @@ function spt_layout_apply_to_docx($docxPath, array $settings)
             $currentLine = $headingSpacing->hasAttributeNS($ns, 'line')
                 ? (int)$headingSpacing->getAttributeNS($ns, 'line')
                 : 0;
+            $headingLineTwips = spt_layout_heading_line_twips($paragraphs[$idxHeading], $headingMultiplier);
             if ($currentLine < $headingLineTwips) {
                 $headingSpacing->setAttributeNS($ns, 'w:line', (string)$headingLineTwips);
                 $headingSpacing->setAttributeNS($ns, 'w:lineRule', 'auto');
@@ -1138,28 +1422,7 @@ function spt_layout_apply_to_docx($docxPath, array $settings)
 
         // Semua sel tabel (biodata pegawai, dasar, lampiran) rata atas agar
         // titik dua dan nomor urut tetap sejajar di baris pertama.
-        $tcPrOrder = [
-            'cnfStyle', 'tcW', 'gridSpan', 'hMerge', 'vMerge', 'tcBorders', 'shd',
-            'noWrap', 'tcMar', 'textDirection', 'tcFitText', 'vAlign', 'hideMark',
-            'headers', 'cellIns', 'cellDel', 'cellMerge', 'tcPrChange',
-        ];
-        foreach ($xpath->query('//w:tbl//w:tc') as $cell) {
-            $tcPr = spt_layout_child($cell, 'tcPr');
-            if (!$tcPr) {
-                $tcPr = $document->createElementNS($ns, 'w:tcPr');
-                if ($cell->firstChild) {
-                    $cell->insertBefore($tcPr, $cell->firstChild);
-                } else {
-                    $cell->appendChild($tcPr);
-                }
-            }
-            $vAlign = spt_layout_child($tcPr, 'vAlign');
-            if (!$vAlign) {
-                $vAlign = $document->createElementNS($ns, 'w:vAlign');
-                spt_layout_insert_ordered($tcPr, $vAlign, $tcPrOrder);
-            }
-            $vAlign->setAttributeNS($ns, 'w:val', 'top');
-        }
+        spt_layout_align_tables_top($document);
 
         $styles = $stylesXml !== false ? spt_layout_load_dom($stylesXml) : null;
         if ($styles) {
@@ -3524,6 +3787,7 @@ Settings::setTempDir($tempDir);
     $tempDocx = $tempDir . DIRECTORY_SEPARATOR . 'spt_' . uniqid() . '.docx';
     $templateProcessor->saveAs($tempDocx);
     spt_fix_docx_typos($tempDocx);
+    spt_normalize_docx($tempDocx);
 
     // Salinan DOCX yang sudah disesuaikan layout, dipakai untuk Word COM/LibreOffice.
     // File asli tetap disimpan untuk download Word dan fallback Dompdf (CSS injection).
