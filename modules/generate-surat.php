@@ -7,6 +7,24 @@ use PhpOffice\PhpWord\IOFactory;
 use PhpOffice\PhpWord\Settings;
 
 /**
+ * Cek apakah direktori benar-benar bisa ditulisi file.
+ * Di Windows, is_writable() pada direktori sering menghasilkan false meski berizin tulis.
+ */
+function spt_is_dir_writable($dir) {
+    if (!is_string($dir) || $dir === '' || !is_dir($dir)) {
+        return false;
+    }
+    $testFile = rtrim($dir, '\\/') . DIRECTORY_SEPARATOR . 'spt_w_' . uniqid() . '.tmp';
+    $fp = @fopen($testFile, 'wb');
+    if ($fp === false) {
+        return false;
+    }
+    fclose($fp);
+    @unlink($testFile);
+    return true;
+}
+
+/**
  * Konversi file .docx ke .pdf menggunakan Microsoft Word via COM Object.
  * Hasil PDF 100% sama persis dengan tampilan di Word.
  * Syarat: Windows Server, Microsoft Word terinstall, PHP extension COM aktif (php_com_dotnet.dll).
@@ -34,13 +52,14 @@ function konversi_docx_ke_pdf_word_com($pathDocx, $maxRetries = 3) {
     // Cari direktori yang benar-benar writable
     $candidateDirs = [
         dirname($pathDocxReal), // folder yang sama dengan file docx (pasti writable)
+        dirname(__DIR__) . DIRECTORY_SEPARATOR . 'tmp',
         'C:\\laragon\\tmp',
         'C:\\Windows\\Temp',
         sys_get_temp_dir(),
     ];
     $dir = null;
     foreach ($candidateDirs as $candidate) {
-        if (is_dir($candidate) && is_writable($candidate)) {
+        if (spt_is_dir_writable($candidate)) {
             $dir = $candidate;
             break;
         }
@@ -589,6 +608,20 @@ function spt_layout_shift_gap(DOMElement $paragraph, $deltaTwips, DOMDocument $d
     }
 }
 
+/**
+ * Ciutkan paragraf kosong agar tidak memakan ruang vertikal dokumen.
+ * Menjadikan line height minimal (1 pt) dan spasi sebelum/sesudah 0.
+ */
+function spt_layout_collapse_paragraph(DOMElement $paragraph, DOMDocument $dom)
+{
+    $spacing = spt_layout_spacing($paragraph, $dom);
+    $ns = spt_layout_w_ns();
+    $spacing->setAttributeNS($ns, 'w:before', '0');
+    $spacing->setAttributeNS($ns, 'w:after', '0');
+    $spacing->setAttributeNS($ns, 'w:line', '20');
+    $spacing->setAttributeNS($ns, 'w:lineRule', 'exact');
+}
+
 function spt_layout_add_keep_flag(DOMElement $paragraph, $flag, DOMDocument $dom)
 {
     $pPr = spt_layout_paragraph_properties($paragraph, $dom);
@@ -831,21 +864,41 @@ function spt_layout_apply_to_docx($docxPath, array $settings)
             $spacing = spt_layout_spacing($paragraphs[$idxKopEnd], $document);
             $spacing->setAttributeNS($ns, 'w:after', (string)$kopBottomTwips);
         }
+        if ($idxJudul !== null) {
+            for ($k = ($idxKopEnd !== null ? $idxKopEnd : 0); $k < $idxJudul; $k++) {
+                if (isset($paragraphs[$k]) && spt_layout_paragraph_text($paragraphs[$k]) === '') {
+                    spt_layout_collapse_paragraph($paragraphs[$k], $document);
+                }
+            }
+        }
 
         // 2. BLOK JUDUL & NOMOR SURAT
         if ($idxJudul !== null && isset($paragraphs[$idxJudul])) {
             $judulTopTwips = spt_layout_px_to_twips($settings['judul_top_spacing'] ?? 0);
             $nomorTwips = spt_layout_px_to_twips($settings['nomor_surat_spacing'] ?? 4);
             $spacing = spt_layout_spacing($paragraphs[$idxJudul], $document);
-            if ($judulTopTwips != 0) {
-                $spacing->setAttributeNS($ns, 'w:before', (string)$judulTopTwips);
-            }
+            $effectiveJudulTop = max(0, $kopBottomTwips + $judulTopTwips);
+            $spacing->setAttributeNS($ns, 'w:before', (string)$effectiveJudulTop);
             $spacing->setAttributeNS($ns, 'w:after', (string)$nomorTwips);
+        }
+        if ($idxJudul !== null && $idxNomor !== null) {
+            for ($k = $idxJudul + 1; $k < $idxNomor; $k++) {
+                if (isset($paragraphs[$k]) && spt_layout_paragraph_text($paragraphs[$k]) === '') {
+                    spt_layout_collapse_paragraph($paragraphs[$k], $document);
+                }
+            }
         }
         if ($idxNomor !== null && isset($paragraphs[$idxNomor])) {
             $judulBottomTwips = spt_layout_px_to_twips($settings['judul_bottom_spacing'] ?? 10);
             $spacing = spt_layout_spacing($paragraphs[$idxNomor], $document);
             $spacing->setAttributeNS($ns, 'w:after', (string)$judulBottomTwips);
+            if ($idxDasar !== null) {
+                for ($k = $idxNomor + 1; $k < $idxDasar; $k++) {
+                    if (isset($paragraphs[$k]) && spt_layout_paragraph_text($paragraphs[$k]) === '') {
+                        spt_layout_collapse_paragraph($paragraphs[$k], $document);
+                    }
+                }
+            }
         }
 
         // 3. BLOK DASAR
@@ -854,9 +907,21 @@ function spt_layout_apply_to_docx($docxPath, array $settings)
             $dasarItemTwips = spt_layout_px_to_twips($settings['dasar_item_spacing'] ?? 3);
             $dasarBottomTwips = spt_layout_px_to_twips($settings['dasar_bottom_spacing'] ?? 8);
 
-            $endDasar = $idxMemerintahkan !== null ? max($idxDasar, $idxMemerintahkan - 1) : $idxDasar;
+            $limitDasar = $idxMemerintahkan !== null ? max($idxDasar, $idxMemerintahkan - 1) : $idxDasar;
+            $endDasar = $idxDasar;
+            for ($k = $limitDasar; $k >= $idxDasar; $k--) {
+                if (isset($paragraphs[$k]) && spt_layout_paragraph_text($paragraphs[$k]) !== '') {
+                    $endDasar = $k;
+                    break;
+                }
+            }
+
             for ($i = $idxDasar; $i <= $endDasar; $i++) {
                 if (!isset($paragraphs[$i])) continue;
+                if (spt_layout_paragraph_text($paragraphs[$i]) === '') {
+                    spt_layout_collapse_paragraph($paragraphs[$i], $document);
+                    continue;
+                }
                 $spacing = spt_layout_spacing($paragraphs[$i], $document);
                 if ($i === $idxDasar) {
                     $spacing->setAttributeNS($ns, 'w:before', (string)$dasarTopTwips);
@@ -867,6 +932,13 @@ function spt_layout_apply_to_docx($docxPath, array $settings)
                     $spacing->setAttributeNS($ns, 'w:after', (string)$dasarItemTwips);
                 }
             }
+            if ($idxMemerintahkan !== null) {
+                for ($k = $endDasar + 1; $k < $idxMemerintahkan; $k++) {
+                    if (isset($paragraphs[$k]) && spt_layout_paragraph_text($paragraphs[$k]) === '') {
+                        spt_layout_collapse_paragraph($paragraphs[$k], $document);
+                    }
+                }
+            }
         }
 
         // 4. BLOK MEMERINTAHKAN
@@ -875,6 +947,14 @@ function spt_layout_apply_to_docx($docxPath, array $settings)
             $spacing = spt_layout_spacing($paragraphs[$idxMemerintahkan], $document);
             $spacing->setAttributeNS($ns, 'w:before', (string)$memSpacingTwips);
             $spacing->setAttributeNS($ns, 'w:after', (string)$memSpacingTwips);
+        }
+        $targetPegawaiStart = $idxKepada !== null ? $idxKepada : ($idxMemerintahkan !== null ? $idxMemerintahkan + 1 : null);
+        if ($idxMemerintahkan !== null && $targetPegawaiStart !== null) {
+            for ($k = $idxMemerintahkan + 1; $k < $targetPegawaiStart; $k++) {
+                if (isset($paragraphs[$k]) && spt_layout_paragraph_text($paragraphs[$k]) === '') {
+                    spt_layout_collapse_paragraph($paragraphs[$k], $document);
+                }
+            }
         }
 
         // 5. BLOK PEGAWAI
@@ -895,7 +975,10 @@ function spt_layout_apply_to_docx($docxPath, array $settings)
             for ($i = $startPegawai; $i <= $endPegawai; $i++) {
                 if (!isset($paragraphs[$i])) continue;
                 $t = spt_layout_paragraph_text($paragraphs[$i]);
-                if ($t === '') continue;
+                if ($t === '') {
+                    spt_layout_collapse_paragraph($paragraphs[$i], $document);
+                    continue;
+                }
 
                 $isNewPegawai = preg_match('/^(?:\d+\.|\bNama\b|\$\{nama[2-9]|\$\{nama1[0-9])/iu', $t);
                 if ($isNewPegawai) {
@@ -907,6 +990,14 @@ function spt_layout_apply_to_docx($docxPath, array $settings)
                     $spacing->setAttributeNS($ns, 'w:before', (string)$pegawaiGapTwips);
                 }
                 $spacing->setAttributeNS($ns, 'w:after', (string)$pegawaiLineTwips);
+            }
+        }
+
+        if ($endPegawai !== null && $idxUntuk !== null) {
+            for ($k = $endPegawai + 1; $k < $idxUntuk; $k++) {
+                if (isset($paragraphs[$k]) && spt_layout_paragraph_text($paragraphs[$k]) === '') {
+                    spt_layout_collapse_paragraph($paragraphs[$k], $document);
+                }
             }
         }
 
@@ -931,6 +1022,10 @@ function spt_layout_apply_to_docx($docxPath, array $settings)
             $endUntuk = $ttdStart !== null ? max($idxUntuk, $ttdStart - 1) : $paragraphCount - 1;
             for ($i = $idxUntuk; $i <= $endUntuk; $i++) {
                 if (!isset($paragraphs[$i])) continue;
+                if (spt_layout_paragraph_text($paragraphs[$i]) === '') {
+                    spt_layout_collapse_paragraph($paragraphs[$i], $document);
+                    continue;
+                }
                 $spacing = spt_layout_spacing($paragraphs[$i], $document);
                 if ($i === $idxUntuk) {
                     $spacing->setAttributeNS($ns, 'w:before', (string)$untukTopTwips);
@@ -939,6 +1034,13 @@ function spt_layout_apply_to_docx($docxPath, array $settings)
                     $spacing->setAttributeNS($ns, 'w:after', (string)$untukBottomTwips);
                 } else {
                     $spacing->setAttributeNS($ns, 'w:after', (string)$untukItemTwips);
+                }
+            }
+            if ($ttdStart !== null) {
+                for ($k = $endUntuk + 1; $k < $ttdStart; $k++) {
+                    if (isset($paragraphs[$k]) && spt_layout_paragraph_text($paragraphs[$k]) === '') {
+                        spt_layout_collapse_paragraph($paragraphs[$k], $document);
+                    }
                 }
             }
         }
@@ -958,14 +1060,37 @@ function spt_layout_apply_to_docx($docxPath, array $settings)
                 $spacing->setAttributeNS($ns, 'w:after', (string)$ttdDateToJabatanTwips);
             }
 
+            // Identifikasi baris jabatan terakhir dan baris nama penandatangan
+            $lastJabatanIdx = null;
+            $nameIdx = null;
+
             for ($i = $ttdStart + 1; $i <= $ttdEnd; $i++) {
                 if (!isset($paragraphs[$i])) continue;
                 $t = spt_layout_paragraph_text($paragraphs[$i]);
+                if (stripos($t, 'Kepala') !== false || stripos($t, 'Cabang Dinas') !== false || stripos($t, 'Wilayah') !== false) {
+                    $lastJabatanIdx = $i;
+                } elseif ($nameIdx === null && (stripos($t, 'NIP') !== false || stripos($t, '${penandatangan') !== false || preg_match('/[A-Z\s\.,]{4,}/u', $t))) {
+                    if ($lastJabatanIdx !== null && $i > $lastJabatanIdx && $t !== '') {
+                        $nameIdx = $i;
+                    }
+                }
+            }
+
+            for ($i = $ttdStart + 1; $i <= $ttdEnd; $i++) {
+                if (!isset($paragraphs[$i])) continue;
+                $t = spt_layout_paragraph_text($paragraphs[$i]);
+
+                // Paragraf kosong antara jabatan dan nama diciutkan agar ttd_space_height menjadi pengendali utama
+                if ($t === '') {
+                    spt_layout_collapse_paragraph($paragraphs[$i], $document);
+                    continue;
+                }
+
                 $spacing = spt_layout_spacing($paragraphs[$i], $document);
 
-                if (stripos($t, 'Kepala') !== false || stripos($t, 'Cabang Dinas') !== false) {
+                if ($lastJabatanIdx !== null && $i === $lastJabatanIdx) {
                     $spacing->setAttributeNS($ns, 'w:after', (string)$ttdSpaceHeightTwips);
-                } elseif (stripos($t, 'NIP') !== false || stripos($t, '${penandatangan') !== false) {
+                } elseif (stripos($t, 'NIP') !== false || ($nameIdx !== null && $i >= $nameIdx)) {
                     $spacing->setAttributeNS($ns, 'w:before', (string)$ttdNameNipTwips);
                 }
             }
@@ -1139,10 +1264,10 @@ function spt_layout_build_css(array $settings)
     $css = '<style>' . PHP_EOL;
     $css .= '@page { margin: ' . $mt . 'mm ' . $mr . 'mm ' . $mb . 'mm ' . $ml . 'mm; }' . PHP_EOL;
     $css .= 'body { font-size: ' . $font . 'pt; line-height: ' . $line . '; }' . PHP_EOL;
-    $css .= 'p, td, th, li, span { font-size: ' . $font . 'pt !important; line-height: ' . $line . ' !important; }' . PHP_EOL;
-    $css .= '.spt-kop { margin-bottom: ' . $kopBottom . 'px !important; }' . PHP_EOL;
-    $css .= '.spt-title { margin-top: ' . $judulTop . 'px !important; margin-bottom: ' . $nomorSpacing . 'px !important; }' . PHP_EOL;
-    $css .= '.spt-nomor { margin-bottom: ' . $judulBottom . 'px !important; }' . PHP_EOL;
+    $css .= 'p, td, th, li, span, h1, h2, h3, h4, h5, h6 { font-size: ' . $font . 'pt !important; line-height: ' . $line . ' !important; }' . PHP_EOL;
+    $css .= 'table.spt-kop, .spt-kop { margin-bottom: ' . $kopBottom . 'px !important; }' . PHP_EOL;
+    $css .= 'h1.spt-title, .spt-title { margin-top: ' . $judulTop . 'px !important; margin-bottom: ' . $nomorSpacing . 'px !important; }' . PHP_EOL;
+    $css .= 'h5.spt-nomor, .spt-nomor { margin-bottom: ' . $judulBottom . 'px !important; }' . PHP_EOL;
     $css .= '.spt-dasar { margin-top: ' . $dasarTop . 'px !important; margin-bottom: ' . $dasarItem . 'px !important; }' . PHP_EOL;
     $css .= '.spt-dasar-last { margin-bottom: ' . $dasarBottom . 'px !important; }' . PHP_EOL;
     $css .= '.spt-memerintahkan { margin-top: ' . $memSpacing . 'px !important; margin-bottom: ' . $memSpacing . 'px !important; }' . PHP_EOL;
@@ -1168,18 +1293,39 @@ function spt_layout_build_css(array $settings)
  */
 function spt_layout_inject_html($html, array $settings)
 {
+    // Beri class spt-kop pada tabel kop surat (tabel pertama yang memuat teks kop)
     $html = preg_replace_callback(
-        '/<(p|h[1-6]|td|th|li|div)\b([^>]*)>(.*?)<\/\1>/is',
+        '/<table\b([^>]*)>(.*?)<\/table>/is',
         function ($match) {
-            $text = trim(preg_replace('/\s+/u', ' ', strip_tags($match[3])));
+            $attrs = $match[1];
+            $inner = $match[2];
+            $text = strip_tags($inner);
+            if (stripos($text, 'PEMERINTAH') !== false || stripos($text, 'KEHUTANAN') !== false || stripos($text, 'CABANG DINAS') !== false) {
+                if (preg_match('/class="([^"]*)"/i', $attrs, $cm)) {
+                    $attrs = preg_replace('/class="[^"]*"/i', 'class="' . trim($cm[1] . ' spt-kop') . '"', $attrs, 1);
+                } else {
+                    $attrs .= ' class="spt-kop"';
+                }
+            }
+            return '<table' . $attrs . '>' . $inner . '</table>';
+        },
+        $html,
+        1
+    );
+
+    // Target paragraf dan heading (hindari tag div agar pembungkus halaman tidak terpengaruh)
+    $html = preg_replace_callback(
+        '/<(p|h[1-6]|li)\b([^>]*)>(.*?)<\/\1>/is',
+        function ($match) {
+            $tag = $match[1];
+            $attributes = $match[2];
+            $inner = $match[3];
+            $text = trim(preg_replace('/\s+/u', ' ', strip_tags($inner)));
             if ($text === '') {
                 return $match[0];
             }
 
             $classes = [];
-            if (stripos($text, 'PEMERINTAH') !== false || stripos($text, 'KEHUTANAN') !== false || stripos($text, 'Jalan') !== false) {
-                $classes[] = 'spt-kop';
-            }
             if (stripos($text, 'SURAT TUGAS') !== false) {
                 $classes[] = 'spt-title';
             }
@@ -1198,7 +1344,7 @@ function spt_layout_inject_html($html, array $settings)
             if (preg_match('/^UNTUK\b/iu', $text)) {
                 $classes[] = 'spt-untuk';
             }
-            if (stripos($text, 'Bojonegoro') !== false && stripos($text, 'DINAS') === false) {
+            if (stripos($text, 'Bojonegoro') !== false && stripos($text, 'DINAS') === false && stripos($text, 'KABUPATEN') === false) {
                 $classes[] = 'spt-ttd-date';
             } elseif (stripos($text, 'Kepala') !== false && stripos($text, 'Cabang Dinas') !== false) {
                 $classes[] = 'spt-ttd-jabatan';
@@ -1210,7 +1356,6 @@ function spt_layout_inject_html($html, array $settings)
                 return $match[0];
             }
 
-            $attributes = $match[2];
             if (preg_match('/class="([^"]*)"/i', $attributes, $classMatch)) {
                 $attributes = preg_replace(
                     '/class="[^"]*"/i',
@@ -1222,7 +1367,7 @@ function spt_layout_inject_html($html, array $settings)
                 $attributes .= ' class="' . implode(' ', $classes) . '"';
             }
 
-            return '<' . $match[1] . $attributes . '>' . $match[3] . '</' . $match[1] . '>';
+            return '<' . $tag . $attributes . '>' . $inner . '</' . $tag . '>';
         },
         $html
     );
@@ -2983,11 +3128,12 @@ $tempCandidates = [
 ];
 $tempDir = __DIR__; // default ke folder modules
 foreach ($tempCandidates as $candidate) {
-    if (is_dir($candidate) && is_writable($candidate)) {
+    if (spt_is_dir_writable($candidate)) {
         $tempDir = $candidate;
         break;
     }
 }
+Settings::setTempDir($tempDir);
     $tempDocx = $tempDir . DIRECTORY_SEPARATOR . 'spt_' . uniqid() . '.docx';
     $templateProcessor->saveAs($tempDocx);
 
@@ -3090,9 +3236,8 @@ foreach ($tempCandidates as $candidate) {
                         $tempPdf = $tempDir . DIRECTORY_SEPARATOR . 'spt_' . uniqid() . '.pdf';
                         $oldErrorReporting = error_reporting(E_ALL & ~E_DEPRECATED);
                         try {
-                            // Fallback Dompdf memakai DOCX asli + CSS dinamis yang
-                            // disuntikkan ke HTML tepat sebelum loadHtml().
-                            $phpWord = IOFactory::load($tempDocx, 'Word2007');
+                            // Fallback Dompdf memakai DOCX yang sudah disesuaikan layout + CSS dinamis
+                            $phpWord = IOFactory::load($pdf_source_docx, 'Word2007');
                             $pdfWriter = IOFactory::createWriter($phpWord, 'PDF');
                             if ($layout_active && $layout_settings !== null && method_exists($pdfWriter, 'getRenderer')) {
                                 $renderer = $pdfWriter->getRenderer();
