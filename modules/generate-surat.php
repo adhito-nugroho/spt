@@ -1,6 +1,6 @@
 <?php
-require_once '../config/database.php';
-require '../vendor/autoload.php';
+require_once __DIR__ . '/../config/database.php';
+require_once __DIR__ . '/../vendor/autoload.php';
 
 use PhpOffice\PhpWord\TemplateProcessor;
 use PhpOffice\PhpWord\IOFactory;
@@ -243,10 +243,25 @@ function spt_layout_default_values()
         'margin_right' => 20,
         'font_size' => 11,
         'line_height' => 1.0,
-        'kop_offset' => 0,
-        'section_spacing' => 0,
-        'ttd_offset' => 0,
+        'kop_bottom_spacing' => 10,
+        'judul_top_spacing' => 0,
+        'nomor_surat_spacing' => 4,
+        'judul_bottom_spacing' => 10,
+        'dasar_top_spacing' => 6,
+        'dasar_item_spacing' => 3,
+        'dasar_bottom_spacing' => 8,
+        'memerintahkan_spacing' => 8,
+        'pegawai_top_spacing' => 6,
+        'pegawai_gap_spacing' => 8,
+        'pegawai_line_spacing' => 2,
+        'untuk_top_spacing' => 6,
+        'untuk_item_spacing' => 3,
+        'untuk_bottom_spacing' => 10,
+        'ttd_offset' => 10,
         'ttd_x' => 0,
+        'ttd_date_to_jabatan' => 4,
+        'ttd_space_height' => 60,
+        'ttd_name_nip_spacing' => 4,
         'lock_ttd' => 0,
     ];
 }
@@ -260,10 +275,25 @@ function spt_layout_ranges()
         'margin_right' => [10, 40, 0.5],
         'font_size' => [9, 13, 0.5],
         'line_height' => [1.0, 2.0, 0.05],
-        'kop_offset' => [-20, 60, 1],
-        'section_spacing' => [0, 30, 1],
-        'ttd_offset' => [-20, 100, 1],
+        'kop_bottom_spacing' => [0, 50, 1],
+        'judul_top_spacing' => [-15, 40, 1],
+        'nomor_surat_spacing' => [0, 30, 1],
+        'judul_bottom_spacing' => [0, 40, 1],
+        'dasar_top_spacing' => [0, 30, 1],
+        'dasar_item_spacing' => [0, 20, 1],
+        'dasar_bottom_spacing' => [0, 30, 1],
+        'memerintahkan_spacing' => [0, 30, 1],
+        'pegawai_top_spacing' => [0, 30, 1],
+        'pegawai_gap_spacing' => [0, 35, 1],
+        'pegawai_line_spacing' => [0, 15, 1],
+        'untuk_top_spacing' => [0, 30, 1],
+        'untuk_item_spacing' => [0, 20, 1],
+        'untuk_bottom_spacing' => [0, 30, 1],
+        'ttd_offset' => [-20, 80, 1],
         'ttd_x' => [-50, 50, 1],
+        'ttd_date_to_jabatan' => [0, 25, 1],
+        'ttd_space_height' => [20, 120, 2],
+        'ttd_name_nip_spacing' => [0, 25, 1],
     ];
 }
 
@@ -998,6 +1028,10 @@ function spt_layout_inject_html($html, array $settings)
         return preg_replace('/<\/head>/i', $css . '</head>', $html, 1);
     }
     return $css . $html;
+}
+
+if (defined('SPT_TEST_MODE')) {
+    return;
 }
 
 if (!isset($_GET['id'])) {
