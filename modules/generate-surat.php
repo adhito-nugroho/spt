@@ -740,48 +740,65 @@ function spt_layout_apply_to_docx($docxPath, array $settings)
         foreach ($xpath->query('//w:body//w:p') as $paragraph) {
             $paragraphs[] = $paragraph;
         }
+        $paragraphCount = count($paragraphs);
 
-        // Jarak kop ke judul: cari paragraf judul "SURAT TUGAS".
-        $kopOffset = spt_layout_px_to_twips($settings['kop_offset']);
-        if ($kopOffset !== 0) {
-            foreach ($paragraphs as $paragraph) {
-                $text = spt_layout_paragraph_text($paragraph);
-                if ($text !== '' && stripos($text, 'SURAT TUGAS') !== false) {
-                    spt_layout_shift_gap($paragraph, $kopOffset, $document);
-                    break;
-                }
-            }
-        }
-
-        // Jarak antar bagian DASAR / KEPADA / UNTUK.
-        $sectionSpacing = spt_layout_px_to_twips($settings['section_spacing']);
-        if ($sectionSpacing > 0) {
-            foreach ($paragraphs as $paragraph) {
-                $text = spt_layout_paragraph_text($paragraph);
-                if ($text !== '' && preg_match('/^(DASAR|KEPADA|UNTUK|MEMERINTAHKAN)\b/iu', $text)) {
-                    spt_layout_shift_gap($paragraph, $sectionSpacing, $document);
-                }
-            }
-        }
-
-        // Cari awal blok tanda tangan: baris "Bojonegoro <tanggal>".
+        // Cari landmark index per blok
+        $idxJudul = null;
+        $idxNomor = null;
+        $idxDasar = null;
+        $idxMemerintahkan = null;
+        $idxKepada = null;
+        $idxUntuk = null;
         $ttdStart = null;
         $ttdEnd = null;
-        $paragraphCount = count($paragraphs);
+
         foreach ($paragraphs as $index => $paragraph) {
             $text = spt_layout_paragraph_text($paragraph);
             if ($text === '') {
                 continue;
             }
-            $isPlaceLine = stripos($text, 'Bojonegoro') !== false
-                && stripos($text, 'Jalan') === false
-                && stripos($text, 'DINAS') === false
-                && stripos($text, 'KABUPATEN') === false;
-            if ($isPlaceLine) {
-                $ttdStart = $index;
-                break;
+
+            if ($idxJudul === null && stripos($text, 'SURAT TUGAS') !== false) {
+                $idxJudul = $index;
+                continue;
+            }
+
+            if ($idxJudul !== null && $idxNomor === null && stripos($text, 'Nomor') !== false && $index <= $idxJudul + 3) {
+                $idxNomor = $index;
+                continue;
+            }
+
+            if ($idxDasar === null && preg_match('/^DASAR\b/iu', $text)) {
+                $idxDasar = $index;
+                continue;
+            }
+
+            if ($idxMemerintahkan === null && preg_match('/^MEMERINTAHKAN\b/iu', $text)) {
+                $idxMemerintahkan = $index;
+                continue;
+            }
+
+            if ($idxKepada === null && preg_match('/^KEPADA\b/iu', $text)) {
+                $idxKepada = $index;
+                continue;
+            }
+
+            if ($idxUntuk === null && preg_match('/^UNTUK\b/iu', $text)) {
+                $idxUntuk = $index;
+                continue;
+            }
+
+            if ($ttdStart === null) {
+                $isPlaceLine = stripos($text, 'Bojonegoro') !== false
+                    && stripos($text, 'Jalan') === false
+                    && stripos($text, 'DINAS') === false
+                    && stripos($text, 'KABUPATEN') === false;
+                if ($isPlaceLine) {
+                    $ttdStart = $index;
+                }
             }
         }
+
         if ($ttdStart === null) {
             foreach ($paragraphs as $index => $paragraph) {
                 $text = spt_layout_paragraph_text($paragraph);
@@ -791,6 +808,7 @@ function spt_layout_apply_to_docx($docxPath, array $settings)
                 }
             }
         }
+
         if ($ttdStart !== null) {
             $ttdEnd = $ttdStart;
             $limit = min($paragraphCount - 1, $ttdStart + 15);
@@ -804,25 +822,168 @@ function spt_layout_apply_to_docx($docxPath, array $settings)
                     break;
                 }
             }
+        }
 
-            $ttdOffset = spt_layout_px_to_twips($settings['ttd_offset']);
-            if ($ttdOffset !== 0) {
-                spt_layout_shift_gap($paragraphs[$ttdStart], $ttdOffset, $document);
+        // 1. BLOK KOP SURAT
+        $kopBottomTwips = spt_layout_px_to_twips($settings['kop_bottom_spacing'] ?? 10);
+        $idxKopEnd = $idxJudul !== null ? max(0, $idxJudul - 1) : null;
+        if ($idxKopEnd !== null && isset($paragraphs[$idxKopEnd])) {
+            $spacing = spt_layout_spacing($paragraphs[$idxKopEnd], $document);
+            $spacing->setAttributeNS($ns, 'w:after', (string)$kopBottomTwips);
+        }
+
+        // 2. BLOK JUDUL & NOMOR SURAT
+        if ($idxJudul !== null && isset($paragraphs[$idxJudul])) {
+            $judulTopTwips = spt_layout_px_to_twips($settings['judul_top_spacing'] ?? 0);
+            $nomorTwips = spt_layout_px_to_twips($settings['nomor_surat_spacing'] ?? 4);
+            $spacing = spt_layout_spacing($paragraphs[$idxJudul], $document);
+            if ($judulTopTwips != 0) {
+                $spacing->setAttributeNS($ns, 'w:before', (string)$judulTopTwips);
+            }
+            $spacing->setAttributeNS($ns, 'w:after', (string)$nomorTwips);
+        }
+        if ($idxNomor !== null && isset($paragraphs[$idxNomor])) {
+            $judulBottomTwips = spt_layout_px_to_twips($settings['judul_bottom_spacing'] ?? 10);
+            $spacing = spt_layout_spacing($paragraphs[$idxNomor], $document);
+            $spacing->setAttributeNS($ns, 'w:after', (string)$judulBottomTwips);
+        }
+
+        // 3. BLOK DASAR
+        if ($idxDasar !== null) {
+            $dasarTopTwips = spt_layout_px_to_twips($settings['dasar_top_spacing'] ?? 6);
+            $dasarItemTwips = spt_layout_px_to_twips($settings['dasar_item_spacing'] ?? 3);
+            $dasarBottomTwips = spt_layout_px_to_twips($settings['dasar_bottom_spacing'] ?? 8);
+
+            $endDasar = $idxMemerintahkan !== null ? max($idxDasar, $idxMemerintahkan - 1) : $idxDasar;
+            for ($i = $idxDasar; $i <= $endDasar; $i++) {
+                if (!isset($paragraphs[$i])) continue;
+                $spacing = spt_layout_spacing($paragraphs[$i], $document);
+                if ($i === $idxDasar) {
+                    $spacing->setAttributeNS($ns, 'w:before', (string)$dasarTopTwips);
+                }
+                if ($i === $endDasar) {
+                    $spacing->setAttributeNS($ns, 'w:after', (string)$dasarBottomTwips);
+                } else {
+                    $spacing->setAttributeNS($ns, 'w:after', (string)$dasarItemTwips);
+                }
+            }
+        }
+
+        // 4. BLOK MEMERINTAHKAN
+        if ($idxMemerintahkan !== null && isset($paragraphs[$idxMemerintahkan])) {
+            $memSpacingTwips = spt_layout_px_to_twips($settings['memerintahkan_spacing'] ?? 8);
+            $spacing = spt_layout_spacing($paragraphs[$idxMemerintahkan], $document);
+            $spacing->setAttributeNS($ns, 'w:before', (string)$memSpacingTwips);
+            $spacing->setAttributeNS($ns, 'w:after', (string)$memSpacingTwips);
+        }
+
+        // 5. BLOK PEGAWAI
+        $pegawaiTopTwips = spt_layout_px_to_twips($settings['pegawai_top_spacing'] ?? 6);
+        $pegawaiGapTwips = spt_layout_px_to_twips($settings['pegawai_gap_spacing'] ?? 8);
+        $pegawaiLineTwips = spt_layout_px_to_twips($settings['pegawai_line_spacing'] ?? 2);
+
+        if ($idxKepada !== null && isset($paragraphs[$idxKepada])) {
+            $spacing = spt_layout_spacing($paragraphs[$idxKepada], $document);
+            $spacing->setAttributeNS($ns, 'w:before', (string)$pegawaiTopTwips);
+        }
+
+        $startPegawai = $idxKepada !== null ? $idxKepada + 1 : ($idxMemerintahkan !== null ? $idxMemerintahkan + 1 : null);
+        $endPegawai = $idxUntuk !== null ? max($startPegawai ?? 0, $idxUntuk - 1) : ($ttdStart !== null ? $ttdStart - 1 : null);
+
+        if ($startPegawai !== null && $endPegawai !== null && $startPegawai <= $endPegawai) {
+            $pegawaiCountSeen = 0;
+            for ($i = $startPegawai; $i <= $endPegawai; $i++) {
+                if (!isset($paragraphs[$i])) continue;
+                $t = spt_layout_paragraph_text($paragraphs[$i]);
+                if ($t === '') continue;
+
+                $isNewPegawai = preg_match('/^(?:\d+\.|\bNama\b|\$\{nama[2-9]|\$\{nama1[0-9])/iu', $t);
+                if ($isNewPegawai) {
+                    $pegawaiCountSeen++;
+                }
+
+                $spacing = spt_layout_spacing($paragraphs[$i], $document);
+                if ($isNewPegawai && $pegawaiCountSeen > 1) {
+                    $spacing->setAttributeNS($ns, 'w:before', (string)$pegawaiGapTwips);
+                }
+                $spacing->setAttributeNS($ns, 'w:after', (string)$pegawaiLineTwips);
+            }
+        }
+
+        // Sesuaikan baris tabel pegawai jika ada
+        foreach ($xpath->query('//w:tbl//w:tr') as $tr) {
+            $trText = trim($tr->textContent);
+            if (stripos($trText, 'NAMA') !== false || stripos($trText, 'NIP') !== false || stripos($trText, '${nama') !== false) {
+                foreach ($tr->getElementsByTagNameNS($ns, 'p') as $cellP) {
+                    $sp = spt_layout_spacing($cellP, $document);
+                    $sp->setAttributeNS($ns, 'w:before', (string)$pegawaiLineTwips);
+                    $sp->setAttributeNS($ns, 'w:after', (string)$pegawaiLineTwips);
+                }
+            }
+        }
+
+        // 6. BLOK UNTUK
+        if ($idxUntuk !== null) {
+            $untukTopTwips = spt_layout_px_to_twips($settings['untuk_top_spacing'] ?? 6);
+            $untukItemTwips = spt_layout_px_to_twips($settings['untuk_item_spacing'] ?? 3);
+            $untukBottomTwips = spt_layout_px_to_twips($settings['untuk_bottom_spacing'] ?? 10);
+
+            $endUntuk = $ttdStart !== null ? max($idxUntuk, $ttdStart - 1) : $paragraphCount - 1;
+            for ($i = $idxUntuk; $i <= $endUntuk; $i++) {
+                if (!isset($paragraphs[$i])) continue;
+                $spacing = spt_layout_spacing($paragraphs[$i], $document);
+                if ($i === $idxUntuk) {
+                    $spacing->setAttributeNS($ns, 'w:before', (string)$untukTopTwips);
+                }
+                if ($i === $endUntuk) {
+                    $spacing->setAttributeNS($ns, 'w:after', (string)$untukBottomTwips);
+                } else {
+                    $spacing->setAttributeNS($ns, 'w:after', (string)$untukItemTwips);
+                }
+            }
+        }
+
+        // 7. BLOK TANDA TANGAN
+        if ($ttdStart !== null) {
+            $ttdOffsetTwips = spt_layout_px_to_twips($settings['ttd_offset'] ?? 10);
+            $ttdDateToJabatanTwips = spt_layout_px_to_twips($settings['ttd_date_to_jabatan'] ?? 4);
+            $ttdSpaceHeightTwips = spt_layout_px_to_twips($settings['ttd_space_height'] ?? 60);
+            $ttdNameNipTwips = spt_layout_px_to_twips($settings['ttd_name_nip_spacing'] ?? 4);
+            $ttdIndentTwips = spt_layout_px_to_twips($settings['ttd_x'] ?? 0);
+
+            // Baris Tempat & Tanggal
+            if (isset($paragraphs[$ttdStart])) {
+                $spacing = spt_layout_spacing($paragraphs[$ttdStart], $document);
+                $spacing->setAttributeNS($ns, 'w:before', (string)$ttdOffsetTwips);
+                $spacing->setAttributeNS($ns, 'w:after', (string)$ttdDateToJabatanTwips);
             }
 
-            $ttdIndent = spt_layout_px_to_twips($settings['ttd_x']);
-            if ($ttdIndent !== 0) {
+            for ($i = $ttdStart + 1; $i <= $ttdEnd; $i++) {
+                if (!isset($paragraphs[$i])) continue;
+                $t = spt_layout_paragraph_text($paragraphs[$i]);
+                $spacing = spt_layout_spacing($paragraphs[$i], $document);
+
+                if (stripos($t, 'Kepala') !== false || stripos($t, 'Cabang Dinas') !== false) {
+                    $spacing->setAttributeNS($ns, 'w:after', (string)$ttdSpaceHeightTwips);
+                } elseif (stripos($t, 'NIP') !== false || stripos($t, '${penandatangan') !== false) {
+                    $spacing->setAttributeNS($ns, 'w:before', (string)$ttdNameNipTwips);
+                }
+            }
+
+            if ($ttdIndentTwips !== 0) {
                 for ($i = $ttdStart; $i <= $ttdEnd; $i++) {
+                    if (!isset($paragraphs[$i])) continue;
                     $ind = spt_layout_indentation($paragraphs[$i], $document);
                     $current = $ind->hasAttributeNS($ns, 'left')
                         ? (int)$ind->getAttributeNS($ns, 'left')
                         : 0;
-                    $ind->setAttributeNS($ns, 'w:left', (string)($current + $ttdIndent));
+                    $ind->setAttributeNS($ns, 'w:left', (string)($current + $ttdIndentTwips));
                 }
             }
 
             if (!empty($settings['lock_ttd'])) {
                 for ($i = $ttdStart; $i <= $ttdEnd; $i++) {
+                    if (!isset($paragraphs[$i])) continue;
                     spt_layout_add_keep_flag($paragraphs[$i], 'keepLines', $document);
                     if ($i < $ttdEnd) {
                         spt_layout_add_keep_flag($paragraphs[$i], 'keepNext', $document);
@@ -954,20 +1115,47 @@ function spt_layout_build_css(array $settings)
     $mr = number_format((float)$settings['margin_right'], 2, '.', '');
     $font = number_format((float)$settings['font_size'], 2, '.', '');
     $line = number_format((float)$settings['line_height'], 2, '.', '');
-    $titleGap = max(0, 12 + (int)$settings['kop_offset']);
-    $sectionGap = max(0, (int)$settings['section_spacing']);
-    $ttdGap = max(0, (int)$settings['ttd_offset']);
-    $ttdX = (int)$settings['ttd_x'];
+
+    $kopBottom = max(0, (int)($settings['kop_bottom_spacing'] ?? 10));
+    $judulTop = (int)($settings['judul_top_spacing'] ?? 0);
+    $nomorSpacing = max(0, (int)($settings['nomor_surat_spacing'] ?? 4));
+    $judulBottom = max(0, (int)($settings['judul_bottom_spacing'] ?? 10));
+    $dasarTop = max(0, (int)($settings['dasar_top_spacing'] ?? 6));
+    $dasarItem = max(0, (int)($settings['dasar_item_spacing'] ?? 3));
+    $dasarBottom = max(0, (int)($settings['dasar_bottom_spacing'] ?? 8));
+    $memSpacing = max(0, (int)($settings['memerintahkan_spacing'] ?? 8));
+    $pegawaiTop = max(0, (int)($settings['pegawai_top_spacing'] ?? 6));
+    $pegawaiGap = max(0, (int)($settings['pegawai_gap_spacing'] ?? 8));
+    $pegawaiLine = max(0, (int)($settings['pegawai_line_spacing'] ?? 2));
+    $untukTop = max(0, (int)($settings['untuk_top_spacing'] ?? 6));
+    $untukItem = max(0, (int)($settings['untuk_item_spacing'] ?? 3));
+    $untukBottom = max(0, (int)($settings['untuk_bottom_spacing'] ?? 10));
+    $ttdOffset = max(0, (int)($settings['ttd_offset'] ?? 10));
+    $ttdX = (int)($settings['ttd_x'] ?? 0);
+    $ttdDateToJabatan = max(0, (int)($settings['ttd_date_to_jabatan'] ?? 4));
+    $ttdSpace = max(20, (int)($settings['ttd_space_height'] ?? 60));
+    $ttdNameNip = max(0, (int)($settings['ttd_name_nip_spacing'] ?? 4));
 
     $css = '<style>' . PHP_EOL;
     $css .= '@page { margin: ' . $mt . 'mm ' . $mr . 'mm ' . $mb . 'mm ' . $ml . 'mm; }' . PHP_EOL;
     $css .= 'body { font-size: ' . $font . 'pt; line-height: ' . $line . '; }' . PHP_EOL;
     $css .= 'p, td, th, li, span { font-size: ' . $font . 'pt !important; line-height: ' . $line . ' !important; }' . PHP_EOL;
-    $css .= '.spt-title { margin-top: ' . $titleGap . 'px !important; }' . PHP_EOL;
-    $css .= '.spt-section { margin-top: ' . $sectionGap . 'px !important; }' . PHP_EOL;
-    $css .= '.spt-ttd { margin-top: ' . $ttdGap . 'px !important; margin-left: ' . $ttdX . 'px !important; }' . PHP_EOL;
+    $css .= '.spt-kop { margin-bottom: ' . $kopBottom . 'px !important; }' . PHP_EOL;
+    $css .= '.spt-title { margin-top: ' . $judulTop . 'px !important; margin-bottom: ' . $nomorSpacing . 'px !important; }' . PHP_EOL;
+    $css .= '.spt-nomor { margin-bottom: ' . $judulBottom . 'px !important; }' . PHP_EOL;
+    $css .= '.spt-dasar { margin-top: ' . $dasarTop . 'px !important; margin-bottom: ' . $dasarItem . 'px !important; }' . PHP_EOL;
+    $css .= '.spt-dasar-last { margin-bottom: ' . $dasarBottom . 'px !important; }' . PHP_EOL;
+    $css .= '.spt-memerintahkan { margin-top: ' . $memSpacing . 'px !important; margin-bottom: ' . $memSpacing . 'px !important; }' . PHP_EOL;
+    $css .= '.spt-kepada { margin-top: ' . $pegawaiTop . 'px !important; }' . PHP_EOL;
+    $css .= '.spt-pegawai-gap { margin-top: ' . $pegawaiGap . 'px !important; }' . PHP_EOL;
+    $css .= '.spt-pegawai-line { margin-bottom: ' . $pegawaiLine . 'px !important; }' . PHP_EOL;
+    $css .= '.spt-untuk { margin-top: ' . $untukTop . 'px !important; margin-bottom: ' . $untukItem . 'px !important; }' . PHP_EOL;
+    $css .= '.spt-untuk-last { margin-bottom: ' . $untukBottom . 'px !important; }' . PHP_EOL;
+    $css .= '.spt-ttd-date { margin-top: ' . $ttdOffset . 'px !important; margin-bottom: ' . $ttdDateToJabatan . 'px !important; margin-left: ' . $ttdX . 'px !important; }' . PHP_EOL;
+    $css .= '.spt-ttd-jabatan { margin-bottom: ' . $ttdSpace . 'px !important; margin-left: ' . $ttdX . 'px !important; }' . PHP_EOL;
+    $css .= '.spt-ttd-name { margin-top: ' . $ttdNameNip . 'px !important; margin-left: ' . $ttdX . 'px !important; }' . PHP_EOL;
     if (!empty($settings['lock_ttd'])) {
-        $css .= '.spt-ttd, table { page-break-inside: avoid !important; }' . PHP_EOL;
+        $css .= '.spt-ttd, .spt-ttd-date, .spt-ttd-jabatan, .spt-ttd-name, table { page-break-inside: avoid !important; }' . PHP_EOL;
     }
     $css .= '</style>';
 
@@ -989,19 +1177,35 @@ function spt_layout_inject_html($html, array $settings)
             }
 
             $classes = [];
+            if (stripos($text, 'PEMERINTAH') !== false || stripos($text, 'KEHUTANAN') !== false || stripos($text, 'Jalan') !== false) {
+                $classes[] = 'spt-kop';
+            }
             if (stripos($text, 'SURAT TUGAS') !== false) {
                 $classes[] = 'spt-title';
             }
-            if (preg_match('/^(DASAR|KEPADA|UNTUK|MEMERINTAHKAN)\b/iu', $text)) {
-                $classes[] = 'spt-section';
+            if (stripos($text, 'Nomor :') !== false || stripos($text, 'Nomor:') !== false) {
+                $classes[] = 'spt-nomor';
             }
-            if (
-                stripos($text, 'Bojonegoro') !== false
-                || (stripos($text, 'Kepala') !== false && stripos($text, 'Cabang Dinas') !== false)
-                || stripos($text, 'NIP') !== false
-            ) {
-                $classes[] = 'spt-ttd';
+            if (preg_match('/^DASAR\b/iu', $text)) {
+                $classes[] = 'spt-dasar';
             }
+            if (preg_match('/^MEMERINTAHKAN\b/iu', $text)) {
+                $classes[] = 'spt-memerintahkan';
+            }
+            if (preg_match('/^KEPADA\b/iu', $text)) {
+                $classes[] = 'spt-kepada';
+            }
+            if (preg_match('/^UNTUK\b/iu', $text)) {
+                $classes[] = 'spt-untuk';
+            }
+            if (stripos($text, 'Bojonegoro') !== false && stripos($text, 'DINAS') === false) {
+                $classes[] = 'spt-ttd-date';
+            } elseif (stripos($text, 'Kepala') !== false && stripos($text, 'Cabang Dinas') !== false) {
+                $classes[] = 'spt-ttd-jabatan';
+            } elseif (stripos($text, 'NIP') !== false) {
+                $classes[] = 'spt-ttd-name';
+            }
+
             if (empty($classes)) {
                 return $match[0];
             }
