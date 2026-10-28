@@ -1051,7 +1051,15 @@ function spt_layout_apply_to_docx($docxPath, array $settings)
         $xpath = new DOMXPath($document);
         $xpath->registerNamespace('w', $ns);
 
-        $baseHalfPoints = spt_layout_detect_dominant_font_size($document);
+        // Ukuran dasar diambil dari paragraf isi surat (sama seperti pratinjau),
+        // bukan dari hitungan semua run. Run kosong/spacer sering berukuran lain
+        // dan membuat seluruh dokumen ikut membesar.
+        $bodyDefaults = spt_layout_docx_body_defaults($documentXml, spt_layout_docx_styles($stylesXml));
+        if (!empty($bodyDefaults['font_size'])) {
+            $baseHalfPoints = (float)$bodyDefaults['font_size'] * 2;
+        } else {
+            $baseHalfPoints = (float)spt_layout_detect_dominant_font_size($document);
+        }
         $targetHalfPoints = (float)$settings['font_size'] * 2;
         $factor = $baseHalfPoints > 0 ? ($targetHalfPoints / $baseHalfPoints) : 1.0;
 
@@ -1530,8 +1538,173 @@ function spt_layout_apply_to_docx($docxPath, array $settings)
     }
 }
 
+/**
+ * Baca style paragraf dari word/styles.xml agar ukuran huruf yang
+ * diwarisi dari style (mis. Normal) tetap terhitung.
+ */
+function spt_layout_docx_styles($stylesXml)
+{
+    $styles = [];
+    if ($stylesXml === false || trim($stylesXml) === '') {
+        return $styles;
+    }
+    $doc = new DOMDocument();
+    if (!@$doc->loadXML($stylesXml)) {
+        return $styles;
+    }
+    $wNs = spt_layout_w_ns();
+    $xp = new DOMXPath($doc);
+    $xp->registerNamespace('w', $wNs);
+    foreach ($xp->query('//w:style[@w:type="paragraph"]') as $style) {
+        $id = $style->getAttributeNS($wNs, 'styleId');
+        if ($id === '') {
+            continue;
+        }
+        $basedOn = '';
+        $based = $xp->query('w:basedOn', $style)->item(0);
+        if ($based) {
+            $basedOn = $based->getAttributeNS($wNs, 'val');
+        }
+        $size = 0;
+        $sz = $xp->query('w:rPr/w:sz', $style)->item(0);
+        if ($sz) {
+            $size = (int)$sz->getAttributeNS($wNs, 'val');
+        }
+        $line = 0;
+        $spacing = $xp->query('w:pPr/w:spacing', $style)->item(0);
+        if ($spacing) {
+            $line = (int)$spacing->getAttributeNS($wNs, 'line');
+        }
+        $styles[$id] = ['based' => $basedOn, 'sz' => $size, 'line' => $line];
+    }
+    return $styles;
+}
+
+function spt_layout_style_value(array $styles, $styleId, $field, $depth = 0)
+{
+    if ($styleId === '' || $depth > 20 || !isset($styles[$styleId])) {
+        return 0;
+    }
+    $style = $styles[$styleId];
+    $value = (int)($style[$field] ?? 0);
+    if ($value > 0) {
+        return $value;
+    }
+    return spt_layout_style_value($styles, (string)($style['based'] ?? ''), $field, $depth + 1);
+}
+
+/**
+ * Default huruf & jarak baris diambil dari paragraf isi surat (level body),
+ * bukan dari sel tabel/kop yang ukurannya berbeda.
+ */
+function spt_layout_docx_body_defaults($documentXml, array $styles)
+{
+    $doc = new DOMDocument();
+    if (!@$doc->loadXML($documentXml)) {
+        return null;
+    }
+    $wNs = spt_layout_w_ns();
+    $xp = new DOMXPath($doc);
+    $xp->registerNamespace('w', $wNs);
+
+    $sizeCounts = [];
+    $lineCounts = [];
+    foreach ($xp->query('//w:body/w:p') as $p) {
+        $text = '';
+        foreach ($xp->query('.//w:t', $p) as $t) {
+            $text .= $t->textContent;
+        }
+        if (trim($text) === '') {
+            continue;
+        }
+
+        $styleId = 'Normal';
+        $pStyle = $xp->query('w:pPr/w:pStyle', $p)->item(0);
+        if ($pStyle) {
+            $styleId = $pStyle->getAttributeNS($wNs, 'val');
+        }
+
+        $size = 0;
+        foreach ($xp->query('.//w:r/w:rPr/w:sz', $p) as $sz) {
+            $value = (int)$sz->getAttributeNS($wNs, 'val');
+            if ($value > 0) {
+                $size = $value;
+                break;
+            }
+        }
+        if ($size <= 0) {
+            $size = spt_layout_style_value($styles, $styleId, 'sz');
+        }
+        if ($size <= 0) {
+            $size = 22;
+        }
+        $sizeCounts[$size] = ($sizeCounts[$size] ?? 0) + 1;
+
+        $line = 0;
+        $spacing = $xp->query('w:pPr/w:spacing', $p)->item(0);
+        if ($spacing) {
+            $line = (int)$spacing->getAttributeNS($wNs, 'line');
+        }
+        if ($line <= 0) {
+            $line = spt_layout_style_value($styles, $styleId, 'line');
+        }
+        if ($line >= 240) {
+            $lineCounts[$line] = ($lineCounts[$line] ?? 0) + 1;
+        }
+    }
+
+    if (empty($sizeCounts) && empty($lineCounts)) {
+        return null;
+    }
+
+    $result = ['font_size' => 0.0, 'line_height' => 0.0];
+    if (!empty($sizeCounts)) {
+        arsort($sizeCounts);
+        $result['font_size'] = ((int)key($sizeCounts)) / 2;
+    }
+    if (!empty($lineCounts)) {
+        arsort($lineCounts);
+        $result['line_height'] = ((int)key($lineCounts)) / 240;
+    }
+    return $result;
+}
+
 function spt_layout_detect_default_line_height($documentXml)
 {
+    // Utamakan paragraf isi surat; paragraf kosong dan sel tabel sering
+    // memakai jarak baris berbeda dan membuat deteksi meleset.
+    $doc = new DOMDocument();
+    if (@$doc->loadXML($documentXml)) {
+        $wNs = spt_layout_w_ns();
+        $xp = new DOMXPath($doc);
+        $xp->registerNamespace('w', $wNs);
+        $bodyCounts = [];
+        foreach ($xp->query('//w:body/w:p') as $p) {
+            $text = '';
+            foreach ($xp->query('.//w:t', $p) as $t) {
+                $text .= $t->textContent;
+            }
+            if (trim($text) === '') {
+                continue;
+            }
+            $spacing = $xp->query('w:pPr/w:spacing', $p)->item(0);
+            if (!$spacing) {
+                continue;
+            }
+            $line = (int)$spacing->getAttributeNS($wNs, 'line');
+            if ($line >= 240) {
+                $bodyCounts[$line] = ($bodyCounts[$line] ?? 0) + 1;
+            }
+        }
+        if (!empty($bodyCounts)) {
+            arsort($bodyCounts);
+            return spt_layout_round(
+                spt_layout_clamp(((int)key($bodyCounts)) / 240, 1.0, 2.0),
+                0.05
+            );
+        }
+    }
+
     $counts = [];
     if (preg_match_all('/<w:spacing\b[^>]*w:line="(\d+)"[^>]*w:lineRule="auto"[^>]*>/i', $documentXml, $matches)) {
         foreach ($matches[1] as $line) {
@@ -1577,6 +1750,7 @@ function spt_layout_read_docx_defaults($docxPath)
     }
 
     $documentXml = $zip->getFromName('word/document.xml');
+    $stylesXml = $zip->getFromName('word/styles.xml');
     $zip->close();
     if ($documentXml === false) {
         return $defaults;
@@ -1590,21 +1764,31 @@ function spt_layout_read_docx_defaults($docxPath)
         }
     }
 
-    $counts = [];
-    if (preg_match_all('/<w:sz\s+w:val="(\d+)"/i', $documentXml, $matches)) {
-        foreach ($matches[1] as $halfPoint) {
-            $halfPoint = (int)$halfPoint;
-            if ($halfPoint > 0) {
-                $counts[$halfPoint] = ($counts[$halfPoint] ?? 0) + 1;
+    $bodyDefaults = spt_layout_docx_body_defaults(
+        $documentXml,
+        spt_layout_docx_styles($stylesXml)
+    );
+    if ($bodyDefaults && $bodyDefaults['font_size'] > 0) {
+        $defaults['font_size'] = spt_layout_round($bodyDefaults['font_size'], 0.5);
+    } else {
+        $counts = [];
+        if (preg_match_all('/<w:sz\s+w:val="(\d+)"/i', $documentXml, $matches)) {
+            foreach ($matches[1] as $halfPoint) {
+                $halfPoint = (int)$halfPoint;
+                if ($halfPoint > 0) {
+                    $counts[$halfPoint] = ($counts[$halfPoint] ?? 0) + 1;
+                }
             }
-        }
-        if (!empty($counts)) {
-            arsort($counts);
-            $defaults['font_size'] = spt_layout_round(key($counts) / 2, 0.5);
+            if (!empty($counts)) {
+                arsort($counts);
+                $defaults['font_size'] = spt_layout_round(key($counts) / 2, 0.5);
+            }
         }
     }
 
-    $defaults['line_height'] = spt_layout_detect_default_line_height($documentXml);
+    $defaults['line_height'] = ($bodyDefaults && $bodyDefaults['line_height'] > 0)
+        ? spt_layout_round($bodyDefaults['line_height'], 0.05)
+        : spt_layout_detect_default_line_height($documentXml);
 
     // Samakan dengan batas slider agar UI tidak menampilkan nilai di luar range.
     foreach (spt_layout_ranges() as $key => $range) {
@@ -1944,6 +2128,1282 @@ function spt_layout_render_control($key, $label, array $settings, $unit, $help =
     {$helpHtml}
 </div>
 HTML;
+}
+
+/**
+ * =====================================================================
+ * PRATINJAU INTERAKTIF (HTML)
+ * =====================================================================
+ * Pratinjau dirender dari DOCX hasil generate, lalu diberi penanda blok
+ * dan CSS variabel agar jarak antar blok bisa ditarik langsung di halaman.
+ * Hasil akhir tetap PDF/Word lewat pipeline DOCX yang sudah ada.
+ */
+
+function spt_preview_norm_text($text)
+{
+    return trim(preg_replace('/\s+/u', ' ', (string)$text));
+}
+
+function spt_preview_key_text($text)
+{
+    return preg_replace('/\s+/u', '', (string)$text);
+}
+
+function spt_preview_node_text(DOMXPath $xpath, DOMNode $node)
+{
+    $text = '';
+    foreach ($xpath->query('.//w:t', $node) as $t) {
+        $text .= $t->textContent;
+    }
+    return $text;
+}
+
+function spt_preview_twips_pt($twips)
+{
+    return ((float)$twips) / 20.0;
+}
+
+function spt_preview_emu_mm($emu)
+{
+    return ((float)$emu) / 36000.0;
+}
+
+function spt_preview_emu_pt($emu)
+{
+    return ((float)$emu) / 12700.0;
+}
+
+function spt_preview_emu_px($emu)
+{
+    return ((float)$emu) / 9525.0;
+}
+
+/**
+ * Konversi nilai CSS (mis. "1in", "35.25pt", "54px") ke piksel.
+ */
+function spt_preview_css_length_px($value)
+{
+    if (!preg_match('/^\s*(-?[0-9.]+)\s*(pt|in|cm|mm|px|pc)?\s*$/i', (string)$value, $m)) {
+        return 0.0;
+    }
+    $number = (float)$m[1];
+    $unit = strtolower($m[2] ?? 'px');
+    switch ($unit) {
+        case 'pt':
+            return $number * 96 / 72;
+        case 'in':
+            return $number * 96;
+        case 'cm':
+            return $number * 96 / 2.54;
+        case 'mm':
+            return $number * 96 / 25.4;
+        case 'pc':
+            return $number * 16;
+        default:
+            return $number;
+    }
+}
+
+function spt_preview_css_length_mm($value)
+{
+    return spt_preview_css_length_px($value) * 25.4 / 96;
+}
+
+/**
+ * Kumpulkan informasi DOCX yang dibutuhkan pratinjau: ukuran halaman,
+ * border tabel, text box (blok TTD), properti paragraf, dan gambar.
+ */
+function spt_preview_docx_bundle($docxPath)
+{
+    $bundle = [
+        'page' => [
+            'width_mm' => 210.0,
+            'height_mm' => 297.0,
+            'margin_left' => 20.0,
+            'margin_right' => 20.0,
+            'margin_top' => 15.0,
+            'margin_bottom' => 15.0,
+        ],
+        'tables' => [],
+        'textboxes' => [],
+        'paragraphs' => [],
+        'media' => [],
+        'images' => [],
+        'floats' => [],
+    ];
+
+    if (!class_exists('ZipArchive') || !is_file($docxPath)) {
+        return $bundle;
+    }
+
+    $zip = new ZipArchive();
+    if ($zip->open($docxPath) !== true) {
+        return $bundle;
+    }
+
+    $documentXml = $zip->getFromName('word/document.xml');
+    $stylesXml = $zip->getFromName('word/styles.xml');
+    $relsXml = $zip->getFromName('word/_rels/document.xml.rels');
+    if ($documentXml === false) {
+        $zip->close();
+        return $bundle;
+    }
+    $docStyles = spt_layout_docx_styles($stylesXml === false ? '' : $stylesXml);
+
+    $doc = new DOMDocument();
+    if (!@$doc->loadXML($documentXml)) {
+        $zip->close();
+        return $bundle;
+    }
+
+    $wNs = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
+    $xp = new DOMXPath($doc);
+    $xp->registerNamespace('w', $wNs);
+    $xp->registerNamespace('wp', 'http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing');
+    $xp->registerNamespace('wps', 'http://schemas.microsoft.com/office/word/2010/wordprocessingShape');
+    $xp->registerNamespace('a', 'http://schemas.openxmlformats.org/drawingml/2006/main');
+    $xp->registerNamespace('v', 'urn:schemas-microsoft-com:vml');
+    $xp->registerNamespace('r', 'http://schemas.openxmlformats.org/officeDocument/2006/relationships');
+
+    $pgSz = $xp->query('//w:body/w:sectPr/w:pgSz')->item(0);
+    if ($pgSz) {
+        $w = (int)$pgSz->getAttributeNS($wNs, 'w');
+        $h = (int)$pgSz->getAttributeNS($wNs, 'h');
+        if ($w > 0) {
+            $bundle['page']['width_mm'] = round($w * 25.4 / 1440, 2);
+        }
+        if ($h > 0) {
+            $bundle['page']['height_mm'] = round($h * 25.4 / 1440, 2);
+        }
+    }
+
+    $pgMar = $xp->query('//w:body/w:sectPr/w:pgMar')->item(0);
+    if ($pgMar) {
+        foreach (['top', 'bottom', 'left', 'right'] as $side) {
+            $value = (int)$pgMar->getAttributeNS($wNs, $side);
+            if ($value > 0) {
+                $bundle['page']['margin_' . $side] = round($value * 25.4 / 1440, 2);
+            }
+        }
+    }
+
+    // Peta relationship gambar (logo, tanda tangan) ke data URI.
+    $mediaRels = [];
+    if ($relsXml !== false) {
+        $relsDoc = new DOMDocument();
+        if (@$relsDoc->loadXML($relsXml)) {
+            $relsXp = new DOMXPath($relsDoc);
+            $relsXp->registerNamespace('r', 'http://schemas.openxmlformats.org/package/2006/relationships');
+            foreach ($relsXp->query('//r:Relationship') as $rel) {
+                $target = str_replace('\\', '/', $rel->getAttribute('Target'));
+                if (stripos($target, 'media/') !== false) {
+                    $mediaRels[$rel->getAttribute('Id')] = 'word/' . ltrim($target, '/');
+                }
+            }
+        }
+    }
+    foreach ($mediaRels as $rid => $path) {
+        $data = $zip->getFromName($path);
+        if ($data === false) {
+            continue;
+        }
+        $ext = strtolower(pathinfo($path, PATHINFO_EXTENSION));
+        $mime = [
+            'png' => 'image/png',
+            'jpg' => 'image/jpeg',
+            'jpeg' => 'image/jpeg',
+            'gif' => 'image/gif',
+            'bmp' => 'image/bmp',
+            'svg' => 'image/svg+xml',
+        ][$ext] ?? 'application/octet-stream';
+        $bundle['media'][$rid] = 'data:' . $mime . ';base64,' . base64_encode($data);
+    }
+
+    // Border, lebar kolom, dan posisi tabel sesuai DOCX. PHPWord selalu
+    // menambahkan border dan mengabaikan lebar kolom saat export HTML.
+    foreach ($xp->query('//w:body//w:tbl') as $tbl) {
+        $flags = [];
+        foreach (['top', 'left', 'bottom', 'right', 'insideH', 'insideV'] as $side) {
+            $node = $xp->query('w:tblPr/w:tblBorders/w:' . $side, $tbl)->item(0);
+            $val = $node ? strtolower($node->getAttributeNS($wNs, 'val')) : '';
+            $flags[$side] = ($val !== '' && $val !== 'nil' && $val !== 'none');
+        }
+
+        $widths = [];
+        foreach ($xp->query('w:tblGrid/w:gridCol', $tbl) as $col) {
+            $width = (int)$col->getAttributeNS($wNs, 'w');
+            if ($width > 0) {
+                $widths[] = round($width / 15, 1);
+            }
+        }
+
+        $align = '';
+        $jc = $xp->query('w:tblPr/w:jc', $tbl)->item(0);
+        if ($jc) {
+            $align = $jc->getAttributeNS($wNs, 'val');
+        }
+
+        $indentPx = 0.0;
+        $ind = $xp->query('w:tblPr/w:tblInd', $tbl)->item(0);
+        if ($ind) {
+            $indentPx = round(((int)$ind->getAttributeNS($wNs, 'w')) / 15, 1);
+        }
+
+        $bundle['tables'][] = [
+            'borders' => $flags,
+            'widths' => $widths,
+            'align' => $align,
+            'indent_px' => $indentPx,
+        ];
+    }
+
+    // Ukuran gambar dari DOCX. PHPWord memakai ukuran intrinsik PNG,
+    // bukan ukuran tampilan yang diatur di dokumen.
+    foreach ($xp->query('//w:body//wp:inline | //w:body//wp:anchor') as $drawing) {
+        if ($xp->query('ancestor::wps:txbx', $drawing)->length > 0) {
+            continue;
+        }
+        $extent = $xp->query('wp:extent', $drawing)->item(0);
+        if (!$extent) {
+            continue;
+        }
+        $width = (int)$extent->getAttribute('cx');
+        $height = (int)$extent->getAttribute('cy');
+        if ($width <= 0 || $height <= 0) {
+            continue;
+        }
+        $bundle['images'][] = [
+            'width_px' => round(spt_preview_emu_px($width), 1),
+            'height_px' => round(spt_preview_emu_px($height), 1),
+        ];
+    }
+
+    // Logo kop template lama berupa shape VML melayang. PHPWord merendernya
+    // inline dengan ukuran intrinsik, sehingga baris kop terdorong; posisi
+    // dan ukuran asli diambil dari style shape agar sama dengan Word.
+    $seenFloat = [];
+    foreach ($xp->query('//w:body//v:shape[v:imagedata]') as $shape) {
+        $shapeStyle = $shape->getAttribute('style');
+        if (stripos($shapeStyle, 'position:absolute') === false) {
+            continue;
+        }
+        $shapeProps = [];
+        foreach (explode(';', $shapeStyle) as $part) {
+            $pair = explode(':', $part, 2);
+            if (count($pair) === 2) {
+                $shapeProps[strtolower(trim($pair[0]))] = trim($pair[1]);
+            }
+        }
+        $width = spt_preview_css_length_px($shapeProps['width'] ?? '');
+        $height = spt_preview_css_length_px($shapeProps['height'] ?? '');
+        if ($width <= 0 || $height <= 0) {
+            continue;
+        }
+        $left = spt_preview_css_length_mm($shapeProps['margin-left'] ?? '0');
+        $top = spt_preview_css_length_mm($shapeProps['margin-top'] ?? '0');
+        $floatKey = $shapeStyle . '|' . $left . '|' . $top;
+        if (isset($seenFloat[$floatKey])) {
+            continue;
+        }
+        $seenFloat[$floatKey] = true;
+        $imageData = $shape->getElementsByTagNameNS(
+            'urn:schemas-microsoft-com:vml',
+            'imagedata'
+        )->item(0);
+        $imageRid = $imageData
+            ? $imageData->getAttributeNS('http://schemas.openxmlformats.org/officeDocument/2006/relationships', 'id')
+            : '';
+        $bundle['floats'][] = [
+            'width_px' => round($width, 1),
+            'height_px' => round($height, 1),
+            'left_mm' => round($left, 2),
+            'top_mm' => round($top, 2),
+            'src' => $imageRid !== '' && isset($bundle['media'][$imageRid]) ? $bundle['media'][$imageRid] : '',
+        ];
+    }
+
+    // Properti paragraf level atas untuk memperbaiki alignment/indentasi
+    // yang hilang saat PHPWord mengonversi heading ke HTML.
+    foreach ($xp->query('//w:body/w:p') as $p) {
+        $text = spt_preview_norm_text(spt_preview_node_text($xp, $p));
+        $key = spt_preview_key_text($text);
+        if ($key === '') {
+            continue;
+        }
+        $align = '';
+        $jc = $xp->query('w:pPr/w:jc', $p)->item(0);
+        if ($jc) {
+            $value = $jc->getAttributeNS($wNs, 'val');
+            $align = ($value === 'both') ? 'justify' : $value;
+        }
+        $leftPt = 0.0;
+        $firstPt = 0.0;
+        $ind = $xp->query('w:pPr/w:ind', $p)->item(0);
+        if ($ind) {
+            $leftPt = spt_preview_twips_pt((int)$ind->getAttributeNS($wNs, 'left'));
+            $firstPt = spt_preview_twips_pt((int)$ind->getAttributeNS($wNs, 'firstLine'));
+            $hanging = (int)$ind->getAttributeNS($wNs, 'hanging');
+            if ($firstPt == 0.0 && $hanging > 0) {
+                $firstPt = -spt_preview_twips_pt($hanging);
+            }
+        }
+        $pageBreak = $xp->query('w:pPr/w:pageBreakBefore', $p)->length > 0
+            || $xp->query('./w:r/w:br[@w:type="page"]', $p)->length > 0
+            || preg_match('/^Lampiran\s+Surat\b/i', $text);
+
+        // PHPWord tidak menulis ukuran huruf untuk run yang mewarisi style
+        // paragraf, jadi ukurannya diambil dari DOCX agar judul/blok lain
+        // tidak ikut mengecil ke ukuran isi.
+        $fontHalfPoints = 0;
+        foreach ($xp->query('.//w:r/w:rPr/w:sz', $p) as $sz) {
+            $value = (int)$sz->getAttributeNS($wNs, 'val');
+            if ($value > 0) {
+                $fontHalfPoints = $value;
+                break;
+            }
+        }
+        if ($fontHalfPoints <= 0) {
+            $pStyleId = 'Normal';
+            $pStyle = $xp->query('w:pPr/w:pStyle', $p)->item(0);
+            if ($pStyle) {
+                $pStyleId = $pStyle->getAttributeNS($wNs, 'val');
+            }
+            $fontHalfPoints = spt_layout_style_value($docStyles, $pStyleId, 'sz');
+        }
+
+        $bundle['paragraphs'][] = [
+            'key' => $key,
+            'align' => $align,
+            'left_pt' => $leftPt,
+            'first_pt' => $firstPt,
+            'page_break' => $pageBreak,
+            'font_size_pt' => $fontHalfPoints > 0 ? $fontHalfPoints / 2 : 0,
+        ];
+    }
+
+    // Text box (blok TTD). Ambil dari wps:txbx agar tidak duplikat dengan fallback VML.
+    $seenTextBox = [];
+    foreach ($xp->query('//w:body//wps:txbx') as $txbx) {
+        $anchor = $xp->query('ancestor::wp:anchor[1]', $txbx)->item(0);
+        $plainParts = [];
+        foreach ($xp->query('./w:txbxContent/w:p', $txbx) as $p) {
+            $plainParts[] = spt_preview_node_text($xp, $p);
+        }
+        $plain = implode('', $plainParts);
+        $key = spt_preview_key_text($plain);
+        if ($key === '') {
+            continue;
+        }
+
+        $posX = 0;
+        $posY = 0;
+        $relH = 'column';
+        $relV = 'paragraph';
+        $cx = 0;
+        $cy = 0;
+        if ($anchor) {
+            $posH = $xp->query('wp:positionH', $anchor)->item(0);
+            $posV = $xp->query('wp:positionV', $anchor)->item(0);
+            if ($posH) {
+                $relH = $posH->getAttribute('relativeFrom') ?: 'column';
+                $offset = $xp->query('wp:posOffset', $posH)->item(0);
+                $posX = $offset ? (int)$offset->textContent : 0;
+            }
+            if ($posV) {
+                $relV = $posV->getAttribute('relativeFrom') ?: 'paragraph';
+                $offset = $xp->query('wp:posOffset', $posV)->item(0);
+                $posY = $offset ? (int)$offset->textContent : 0;
+            }
+            $extent = $xp->query('wp:extent', $anchor)->item(0);
+            if ($extent) {
+                $cx = (int)$extent->getAttribute('cx');
+                $cy = (int)$extent->getAttribute('cy');
+            }
+        }
+
+        $dedupe = $key . '|' . $posX . '|' . $posY;
+        if (isset($seenTextBox[$dedupe])) {
+            continue;
+        }
+        $seenTextBox[$dedupe] = true;
+
+        $xMm = spt_preview_emu_mm($posX);
+        if ($relH === 'page') {
+            $xMm -= $bundle['page']['margin_left'];
+        }
+        $yPt = spt_preview_emu_pt($posY);
+        if ($relV === 'margin' || $relV === 'page') {
+            $yPt -= $bundle['page']['margin_top'] * 72 / 25.4;
+        }
+        $widthMm = $cx > 0 ? spt_preview_emu_mm($cx) : 90.0;
+        $heightPt = $cy > 0 ? spt_preview_emu_pt($cy) : 0.0;
+
+        $lines = [];
+        foreach ($xp->query('./w:txbxContent/w:p', $txbx) as $p) {
+            $lineText = spt_preview_norm_text(spt_preview_node_text($xp, $p));
+            $rendered = spt_preview_render_txbx_paragraph($xp, $p, $bundle['media'], $wNs);
+            if ($lineText === '' && $rendered['html'] === '') {
+                continue;
+            }
+            $lines[] = ['text' => $lineText, 'html' => $rendered['html'], 'style' => $rendered['style']];
+        }
+
+        $isDate = function ($text) {
+            return (bool)preg_match('/^(Bojonegoro\b|\d{1,2}\s+\S+\s+\d{4})/i', $text);
+        };
+        $isNip = function ($text) {
+            return (bool)preg_match('/^(NIP|NIP\.)\b/i', trim($text));
+        };
+
+        $isMain = false;
+        $nipIndex = -1;
+        foreach ($lines as $index => $line) {
+            if ($isDate($line['text'])) {
+                $isMain = true;
+            }
+            if ($nipIndex < 0 && $isNip($line['text'])) {
+                $nipIndex = $index;
+            }
+        }
+        // Nama penanda tangan adalah baris tepat sebelum NIP.
+        $nameIndex = $nipIndex > 0 ? $nipIndex - 1 : -1;
+        if ($nameIndex < 0) {
+            for ($i = count($lines) - 1; $i >= 0; $i--) {
+                if ($lines[$i]['text'] !== '' && !$isDate($lines[$i]['text'])) {
+                    $nameIndex = $i;
+                    break;
+                }
+            }
+        }
+
+        foreach ($lines as $index => &$line) {
+            $text = $line['text'];
+            if ($isNip($text)) {
+                $line['class'] = 'spt-ttd-nip';
+            } elseif ($isDate($text)) {
+                $line['class'] = 'spt-ttd-date';
+            } elseif ($index === $nameIndex) {
+                $line['class'] = 'spt-ttd-name';
+            } elseif ($nameIndex >= 0 && $index < $nameIndex) {
+                $line['class'] = 'spt-ttd-jabatan';
+            } else {
+                $line['class'] = 'spt-ttd-line-plain';
+            }
+        }
+        unset($line);
+
+        $lastJabatan = -1;
+        foreach ($lines as $index => $line) {
+            if ($line['class'] === 'spt-ttd-jabatan') {
+                $lastJabatan = $index;
+            }
+        }
+        $html = '';
+        foreach ($lines as $index => $line) {
+            $class = 'spt-ttd-line ' . $line['class'];
+            if ($index === $lastJabatan) {
+                $class .= ' spt-ttd-jabatan-last';
+            }
+            $styleAttr = !empty($line['style']) ? ' style="' . $line['style'] . '"' : '';
+            $html .= '<p class="' . $class . '"' . $styleAttr . '>' . $line['html'] . '</p>';
+        }
+
+        $bundle['textboxes'][] = [
+            'key' => $key,
+            'html' => $html,
+            'x_mm' => round($xMm, 2),
+            'y_pt' => round($yPt, 2),
+            'width_mm' => round($widthMm, 2),
+            'height_pt' => round($heightPt, 2),
+            'main' => $isMain,
+        ];
+    }
+
+    $zip->close();
+    return $bundle;
+}
+
+/**
+ * Render satu paragraf di dalam text box TTD menjadi HTML sederhana
+ * (teks, tebal, garis bawah, dan gambar tanda tangan bila ada).
+ */
+function spt_preview_render_txbx_paragraph(DOMXPath $xp, DOMElement $p, array $media, $wNs)
+{
+    $styles = [];
+    $jc = $xp->query('w:pPr/w:jc', $p)->item(0);
+    if ($jc) {
+        $value = $jc->getAttributeNS($wNs, 'val');
+        $styles[] = 'text-align:' . ($value === 'both' ? 'justify' : $value);
+    }
+    $ind = $xp->query('w:pPr/w:ind', $p)->item(0);
+    if ($ind) {
+        $left = (int)$ind->getAttributeNS($wNs, 'left');
+        $first = (int)$ind->getAttributeNS($wNs, 'firstLine');
+        if ($left > 0) {
+            $styles[] = 'margin-left:' . round(spt_preview_twips_pt($left), 1) . 'pt';
+        }
+        if ($first > 0) {
+            $styles[] = 'text-indent:' . round(spt_preview_twips_pt($first), 1) . 'pt';
+        }
+    }
+    $spacing = $xp->query('w:pPr/w:spacing', $p)->item(0);
+    if ($spacing) {
+        $before = (int)$spacing->getAttributeNS($wNs, 'before');
+        $after = (int)$spacing->getAttributeNS($wNs, 'after');
+        if ($before > 0) {
+            $styles[] = 'margin-top:' . round(spt_preview_twips_pt($before), 1) . 'pt';
+        }
+        if ($after > 0) {
+            $styles[] = 'margin-bottom:' . round(spt_preview_twips_pt($after), 1) . 'pt';
+        }
+    }
+    $styleAttr = implode(';', $styles);
+
+    $html = '';
+    foreach ($xp->query('./w:r | ./w:hyperlink/w:r', $p) as $run) {
+        $runStyles = [];
+        $sz = $xp->query('w:rPr/w:sz', $run)->item(0);
+        if ($sz) {
+            $runStyles[] = 'font-size:' . (((int)$sz->getAttributeNS($wNs, 'val')) / 2) . 'pt';
+        }
+        $fonts = $xp->query('w:rPr/w:rFonts', $run)->item(0);
+        if ($fonts) {
+            $family = $fonts->getAttributeNS($wNs, 'ascii');
+            if ($family !== '') {
+                $runStyles[] = "font-family:'" . str_replace("'", '', $family) . "'";
+            }
+        }
+        if ($xp->query('w:rPr/w:b', $run)->length > 0) {
+            $runStyles[] = 'font-weight:bold';
+        }
+        if ($xp->query('w:rPr/w:i', $run)->length > 0) {
+            $runStyles[] = 'font-style:italic';
+        }
+        $underline = $xp->query('w:rPr/w:u', $run)->item(0);
+        if ($underline && $underline->getAttributeNS($wNs, 'val') !== 'none') {
+            $runStyles[] = 'text-decoration:underline';
+        }
+        $runStyle = implode(';', $runStyles);
+
+        foreach ($run->childNodes as $child) {
+            if ($child->nodeType !== XML_ELEMENT_NODE) {
+                continue;
+            }
+            $name = $child->localName;
+            if ($name === 't') {
+                $html .= '<span' . ($runStyle !== '' ? ' style="' . $runStyle . '"' : '') . '>'
+                    . htmlspecialchars($child->textContent, ENT_QUOTES, 'UTF-8') . '</span>';
+            } elseif ($name === 'tab') {
+                $html .= '<span class="spt-tab"></span>';
+            } elseif ($name === 'br') {
+                $html .= '<br>';
+            } elseif ($name === 'drawing' || $name === 'pict') {
+                $rid = '';
+                $blip = $xp->query('.//a:blip', $child)->item(0);
+                if ($blip) {
+                    $rid = $blip->getAttributeNS('http://schemas.openxmlformats.org/officeDocument/2006/relationships', 'embed');
+                } else {
+                    $img = $xp->query('.//v:imagedata', $child)->item(0);
+                    if ($img) {
+                        $rid = $img->getAttributeNS('http://schemas.openxmlformats.org/officeDocument/2006/relationships', 'id');
+                    }
+                }
+                if ($rid !== '' && isset($media[$rid])) {
+                    $width = 0;
+                    $height = 0;
+                    $extent = $xp->query('.//wp:extent', $child)->item(0);
+                    if ($extent) {
+                        $width = (int)spt_preview_emu_px((int)$extent->getAttribute('cx'));
+                        $height = (int)spt_preview_emu_px((int)$extent->getAttribute('cy'));
+                    }
+                    $size = '';
+                    if ($width > 0 && $height > 0) {
+                        $size = ' style="width:' . $width . 'px;height:' . $height . 'px;"';
+                    }
+                    $html .= '<img src="' . $media[$rid] . '"' . $size . ' alt="">';
+                }
+            }
+        }
+    }
+
+    if ($html === '') {
+        return ['html' => '', 'style' => ''];
+    }
+    return ['html' => $html, 'style' => $styleAttr];
+}
+
+/**
+ * Bangun halaman HTML pratinjau: perbaiki text box, border tabel,
+ * properti paragraf, pecah per halaman, lalu beri penanda blok.
+ */
+function spt_preview_build_pages($phpWordHtml, array $bundle)
+{
+    if (preg_match('/<body\b[^>]*>(.*)<\/body>/is', $phpWordHtml, $match)) {
+        $fragment = $match[1];
+    } else {
+        $fragment = $phpWordHtml;
+    }
+
+    // Skalakan ukuran huruf inline lewat variabel faktor agar slider font
+    // hanya mengubah proporsi, bukan menyamakan semua ukuran huruf.
+    $fragment = preg_replace_callback('/style\s*=\s*"([^"]*)"/i', function ($m) {
+        return 'style="' . preg_replace(
+            '/(?<![-\w])font-size\s*:\s*([0-9.]+)\s*pt/i',
+            'font-size: calc($1pt * var(--spt-font-factor))',
+            $m[1]
+        ) . '"';
+    }, $fragment);
+
+    // Tab pada DOCX jangan menyatu menjadi satu spasi.
+    $fragment = str_replace("\t", '<span class="spt-tab"></span>', $fragment);
+
+    $dom = new DOMDocument();
+    @$dom->loadHTML(
+        '<!DOCTYPE html><html><head><meta charset="utf-8"></head><body>' . $fragment . '</body></html>',
+        LIBXML_NOERROR | LIBXML_NOWARNING
+    );
+    $xp = new DOMXPath($dom);
+
+    // Ganti paragraf hasil flatten text box dengan blok TTD yang diposisikan.
+    $usedTextBox = [];
+    foreach ($bundle['textboxes'] as $tbx) {
+        $target = null;
+        foreach ($xp->query('//body//p | //body//h0 | //body//h1 | //body//h2 | //body//h3 | //body//h4 | //body//h5 | //body//h6 | //body//h7 | //body//h8 | //body//h9') as $el) {
+            if (isset($usedTextBox[spl_object_id($el)])) {
+                continue;
+            }
+            if (spt_preview_key_text($el->textContent) === $tbx['key']) {
+                $target = $el;
+                break;
+            }
+        }
+        if (!$target) {
+            continue;
+        }
+        $usedTextBox[spl_object_id($target)] = true;
+
+        $wrapper = $dom->createElement('div');
+        $wrapper->setAttribute('class', 'spt-ttd-anchor');
+        $wrapper->setAttribute('data-spt-block', 'ttd');
+        $boxClass = 'spt-txbx ' . ($tbx['main'] ? 'spt-txbx-main' : 'spt-txbx-static');
+        $boxStyle = '--txbx-left:' . $tbx['x_mm'] . 'mm;--txbx-top:' . $tbx['y_pt'] . 'pt;'
+            . 'width:' . $tbx['width_mm'] . 'mm;min-height:' . $tbx['height_pt'] . 'pt;';
+        $boxHtml = '<div class="' . $boxClass . '" data-spt-block="ttd"'
+            . ($tbx['main'] ? ' data-spt-main="1"' : '')
+            . ' style="' . $boxStyle . '">' . $tbx['html'] . '</div>';
+        $frag = $dom->createDocumentFragment();
+        if (@$frag->appendXML($boxHtml)) {
+            $wrapper->appendChild($frag);
+            $target->parentNode->replaceChild($wrapper, $target);
+        }
+    }
+
+    // Samakan ukuran gambar dengan ukuran tampilan di Word.
+    $imageIndex = 0;
+    foreach ($xp->query('//body//img') as $img) {
+        $size = $bundle['images'][$imageIndex] ?? null;
+        $imageIndex++;
+        if (!$size) {
+            continue;
+        }
+        $img->setAttribute('style', 'width:' . $size['width_px'] . 'px;height:' . $size['height_px'] . 'px;');
+        $img->setAttribute('width', (string)round($size['width_px']));
+        $img->setAttribute('height', (string)round($size['height_px']));
+    }
+
+    // Gambar melayang (logo kop template lama) diposisikan absolut terhadap
+    // halaman. Margin halaman dikurangkan lewat calc agar posisi tetap saat
+    // slider margin diubah.
+    if (!empty($bundle['floats'])) {
+        $floatsById = [];
+        foreach ($bundle['floats'] as $float) {
+            if ($float['src'] !== '') {
+                $floatsById[$float['src']] = $float;
+            }
+        }
+        foreach ($xp->query('//body//img') as $img) {
+            $src = $img->getAttribute('src');
+            if ($src === '' || !isset($floatsById[$src])) {
+                continue;
+            }
+            $float = $floatsById[$src];
+            unset($floatsById[$src]);
+            $img->setAttribute('style',
+                'position:absolute;'
+                . 'left:calc(' . $float['left_mm'] . 'mm - var(--spt-margin-left));'
+                . 'top:calc(' . $float['top_mm'] . 'mm - var(--spt-margin-top));'
+                . 'width:' . $float['width_px'] . 'px;height:' . $float['height_px'] . 'px;'
+                . 'max-width:none;z-index:2;'
+            );
+        }
+    }
+
+    // Terapkan alignment/indentasi dari DOCX untuk heading yang kehilangan
+    // styling saat dikonversi PHPWord.
+    $htmlBlocks = [];
+    foreach ($xp->query('//body//p | //body//h0 | //body//h1 | //body//h2 | //body//h3 | //body//h4 | //body//h5 | //body//h6 | //body//h7 | //body//h8 | //body//h9') as $el) {
+        if ($xp->query('ancestor::div[contains(@class,"spt-txbx")]', $el)->length > 0) {
+            continue;
+        }
+        $htmlBlocks[] = $el;
+    }
+    $cursor = 0;
+    $blockCount = count($htmlBlocks);
+    foreach ($bundle['paragraphs'] as $para) {
+        for ($i = $cursor; $i < $blockCount; $i++) {
+            $el = $htmlBlocks[$i];
+            if (spt_preview_key_text($el->textContent) !== $para['key']) {
+                continue;
+            }
+            $cursor = $i + 1;
+            $style = $el->getAttribute('style');
+            $add = [];
+            if ($para['align'] !== '' && stripos($style, 'text-align') === false) {
+                $add[] = 'text-align:' . $para['align'];
+            }
+            if ($para['left_pt'] > 0 && stripos($style, 'margin-left') === false) {
+                $add[] = 'margin-left:' . round($para['left_pt'], 1) . 'pt';
+            }
+            if (abs($para['first_pt']) > 0 && stripos($style, 'text-indent') === false) {
+                $add[] = 'text-indent:' . round($para['first_pt'], 1) . 'pt';
+            }
+            $hasFontSize = stripos($style, 'font-size') !== false
+                || $xp->query('.//span[contains(@style,"font-size")]', $el)->length > 0;
+            if (!$hasFontSize && !empty($para['font_size_pt'])) {
+                $add[] = 'font-size:calc(' . $para['font_size_pt'] . 'pt * var(--spt-font-factor))';
+            }
+            if ($add) {
+                $el->setAttribute('style', trim($style . ';' . implode(';', $add), ';'));
+            }
+            if ($para['page_break']) {
+                $el->setAttribute('data-spt-page-break', '1');
+            }
+            break;
+        }
+    }
+
+    // Border, lebar kolom, dan perataan tabel mengikuti DOCX.
+    $tableIndex = 0;
+    foreach ($xp->query('//body//table') as $table) {
+        $info = $bundle['tables'][$tableIndex] ?? [];
+        $tableIndex++;
+        $flags = $info['borders'] ?? [];
+        foreach (['top', 'left', 'bottom', 'right', 'insideH', 'insideV'] as $side) {
+            if (!empty($flags[$side])) {
+                $table->setAttribute('class', trim($table->getAttribute('class') . ' spt-b-' . strtolower($side)));
+            }
+        }
+
+        $widths = $info['widths'] ?? [];
+        if ($widths) {
+            $total = round(array_sum($widths), 1);
+            $style = 'width:' . $total . 'px;';
+            if (($info['align'] ?? '') === 'center') {
+                $style .= 'margin-left:auto;margin-right:auto;';
+            } elseif (($info['align'] ?? '') === 'right') {
+                $style .= 'margin-left:auto;';
+            } elseif (!empty($info['indent_px'])) {
+                $style .= 'margin-left:' . $info['indent_px'] . 'px;';
+            }
+            $table->setAttribute('style', trim($table->getAttribute('style') . ';' . $style, ';'));
+            foreach ($xp->query('./tr | ./tbody/tr', $table) as $row) {
+                $cells = $xp->query('./td | ./th', $row);
+                foreach ($cells as $index => $cell) {
+                    if (!isset($widths[$index])) {
+                        continue;
+                    }
+                    $cell->setAttribute(
+                        'style',
+                        trim($cell->getAttribute('style') . ';width:' . $widths[$index] . 'px', ';')
+                    );
+                }
+            }
+        }
+    }
+
+    // Tentukan isi halaman mengikuti page-break dari DOCX/PHPWord.
+    $pageRoot = null;
+    foreach ($xp->query('//body/div') as $div) {
+        if (stripos($div->getAttribute('style'), 'page:') !== false) {
+            $pageRoot = $div;
+            break;
+        }
+    }
+    if (!$pageRoot) {
+        $pageRoot = $xp->query('//body')->item(0);
+    }
+
+    $pages = [];
+    $page = null;
+    foreach (iterator_to_array($pageRoot->childNodes) as $child) {
+        if ($child->nodeType !== XML_ELEMENT_NODE) {
+            continue;
+        }
+        $isBreak = $child->getAttribute('data-spt-page-break') === '1';
+        $style = $child->getAttribute('style');
+        if (stripos($style, 'page-break-before') !== false && stripos($style, 'always') !== false) {
+            $isBreak = true;
+            $child->setAttribute('style', preg_replace('/page-break-before\s*:\s*always\s*;?/i', '', $style));
+        }
+        if ($isBreak && $page !== null && $page->hasChildNodes()) {
+            $pages[] = $page;
+            $page = null;
+        }
+        if ($page === null) {
+            $page = $dom->createElement('div');
+            $page->setAttribute('class', 'spt-page');
+            $inner = $dom->createElement('div');
+            $inner->setAttribute('class', 'spt-page-inner');
+            $page->appendChild($inner);
+        }
+        $page->firstChild->appendChild($child);
+    }
+    if ($page !== null && $page->hasChildNodes()) {
+        $pages[] = $page;
+    }
+
+    // Beri penanda blok pada setiap halaman.
+    foreach ($pages as $page) {
+        spt_preview_tag_page($dom, $xp, $page->firstChild);
+    }
+
+    $container = $dom->createElement('div');
+    $container->setAttribute('id', 'sptPages');
+    foreach ($pages as $page) {
+        $container->appendChild($page);
+    }
+
+    // Paragraf kosong sesudah blok TTD mengambang hanya penyangga posisi di
+    // Word. Di pratinjau blok TTD sudah diposisikan absolut, jadi penyangga
+    // itu dibuang agar tidak menciptakan halaman tambahan yang hampir kosong.
+    foreach ($xp->query('.//div[contains(@class,"spt-page-inner")]//div[contains(@class,"spt-ttd-anchor")]', $container) as $anchor) {
+        $node = $anchor->nextSibling;
+        while ($node) {
+            $nextNode = $node->nextSibling;
+            if ($node->nodeType === XML_ELEMENT_NODE) {
+                $tag = strtolower($node->nodeName);
+                $nodeText = trim(str_replace("\xC2\xA0", ' ', $node->textContent));
+                if (!preg_match('/^(p|h[0-9])$/', $tag)
+                    || $nodeText !== ''
+                    || $node->getAttribute('data-spt-page-break') === '1') {
+                    break;
+                }
+                $node->parentNode->removeChild($node);
+            }
+            $node = $nextNode;
+        }
+    }
+
+    return $dom->saveHTML($container);
+}
+
+/**
+ * Tandai blok semantik surat pada satu halaman pratinjau.
+ */
+function spt_preview_tag_page(DOMDocument $dom, DOMXPath $xp, DOMElement $inner)
+{
+    $children = [];
+    foreach ($inner->childNodes as $child) {
+        if ($child->nodeType === XML_ELEMENT_NODE) {
+            $children[] = $child;
+        }
+    }
+
+    $addClass = function (DOMElement $el, $class) {
+        $classes = preg_split('/\s+/', trim($el->getAttribute('class')));
+        if (!in_array($class, $classes, true)) {
+            $classes[] = $class;
+        }
+        $el->setAttribute('class', trim(implode(' ', $classes)));
+    };
+    $setBlock = function (DOMElement $el, $name) use ($addClass) {
+        $addClass($el, 'spt-block-' . $name);
+        $el->setAttribute('data-spt-block', $name);
+    };
+    $textOf = function (DOMElement $el) {
+        return spt_preview_norm_text($el->textContent);
+    };
+
+    // Kop surat: kumpulkan baris/tabel kop yang berurutan sampai judul.
+    $kopGroup = [];
+    foreach ($children as $el) {
+        $text = $textOf($el);
+        if ($text === '') {
+            continue;
+        }
+        if (preg_match('/^SURAT\s+TUGAS\b/i', $text)) {
+            break;
+        }
+        if (stripos($text, 'PEMERINTAH') !== false
+            || stripos($text, 'DINAS KEHUTANAN') !== false
+            || stripos($text, 'CABANG DINAS') !== false
+            || stripos($text, 'Jalan Hayam Wuruk') !== false
+            || stripos($text, 'Telepon (0353)') !== false) {
+            $kopGroup[] = $el;
+        }
+    }
+    if ($kopGroup) {
+        $first = $kopGroup[0];
+        if ($first->parentNode === $inner) {
+            $wrap = $dom->createElement('div');
+            $wrap->setAttribute('class', 'spt-kop');
+            $wrap->setAttribute('data-spt-block', 'kop');
+            $inner->insertBefore($wrap, $first);
+            foreach ($kopGroup as $el) {
+                $wrap->appendChild($el);
+                if ($el->nodeName === 'table') {
+                    $addClass($el, 'spt-kop-table');
+                } else {
+                    $addClass($el, 'spt-kop-line');
+                }
+            }
+        }
+    }
+
+    $inDasar = false;
+    $inUntuk = false;
+    $inLampiran = false;
+    $dasarItems = [];
+    $untukItems = [];
+
+    foreach ($children as $el) {
+        if (!in_array($el->parentNode, [$inner, $inner->firstChild ?? null], true)
+            && !$inner->isSameNode($el->parentNode)) {
+            // Elemen yang sudah dipindah ke pembungkus kop tidak diproses lagi.
+            if (!$xp->query('ancestor::div[contains(@class,"spt-kop")]', $el)->length) {
+                // biarkan; elemen lain tetap diproses di bawah
+            } else {
+                continue;
+            }
+        }
+        $text = $textOf($el);
+        if ($text === '') {
+            continue;
+        }
+
+        // Paragraf sesudah "Lampiran Surat Tugas" bukan bagian badan surat,
+        // jadi jangan ditandai sebagai nomor/dasar/untuk.
+        if ($inLampiran) {
+            if (stripos($text, 'Bojonegoro') !== false && stripos($text, 'NIP') !== false) {
+                $addClass($el, 'spt-ttd');
+                $setBlock($el, 'ttd');
+            }
+            continue;
+        }
+
+        if ($el->nodeName === 'table') {
+            $isEmployee = stripos($text, 'NAMA') !== false
+                || stripos($text, 'PANGKAT/GOLONGAN') !== false
+                || (stripos($text, 'KEPADA') !== false && stripos($text, 'Nama') !== false);
+            if ($isEmployee) {
+                $addClass($el, 'spt-pegawai');
+                if (stripos($text, 'KEPADA') !== false) {
+                    $addClass($el, 'spt-kepada');
+                }
+                $setBlock($el, 'pegawai');
+                $rowIndex = 0;
+                foreach ($xp->query('./tr | ./tbody/tr', $el) as $row) {
+                    $rowText = $textOf($row);
+                    if ($rowText === '') {
+                        continue;
+                    }
+                    if ($rowIndex === 0 && (stripos($rowText, 'NAMA') !== false || preg_match('/^No\b/i', $rowText))) {
+                        $addClass($row, 'spt-pegawai-head');
+                    } else {
+                        $addClass($row, 'spt-pegawai-row');
+                    }
+                    foreach ($xp->query('.//p', $row) as $p) {
+                        $addClass($p, 'spt-pegawai-line');
+                    }
+                    $rowIndex++;
+                }
+            } elseif (stripos($text, 'PEMERINTAH') !== false || stripos($text, 'CABANG DINAS') !== false) {
+                $addClass($el, 'spt-kop');
+                $setBlock($el, 'kop');
+                foreach ($xp->query('.//p', $el) as $p) {
+                    $addClass($p, 'spt-kop-line');
+                }
+            }
+            continue;
+        }
+
+        if (stripos($el->getAttribute('class'), 'spt-ttd-anchor') !== false) {
+            continue;
+        }
+
+        if (preg_match('/^SURAT\s+TUGAS\b/i', $text)) {
+            $addClass($el, 'spt-title');
+            $setBlock($el, 'title');
+            continue;
+        }
+        if (preg_match('/^Nomor\b/i', $text)) {
+            $addClass($el, 'spt-nomor');
+            $setBlock($el, 'nomor');
+            continue;
+        }
+        if (preg_match('/^DASAR\b/i', $text)) {
+            $addClass($el, 'spt-dasar');
+            $setBlock($el, 'dasar');
+            $inDasar = true;
+            $inUntuk = false;
+            $dasarItems = [];
+            continue;
+        }
+        if ($inDasar && preg_match('/^\d+[\.\)]\s*/', $text)) {
+            $addClass($el, 'spt-dasar-item');
+            $el->setAttribute('data-spt-item', 'dasar');
+            $dasarItems[] = $el;
+            continue;
+        }
+        if (preg_match('/^MEMERINTAHKAN\b/i', $text)) {
+            $addClass($el, 'spt-memerintahkan');
+            $setBlock($el, 'memerintahkan');
+            $inDasar = false;
+            $inUntuk = false;
+            continue;
+        }
+        if (preg_match('/^KEPADA\b/i', $text)) {
+            $addClass($el, 'spt-kepada');
+            $setBlock($el, 'pegawai');
+            $inDasar = false;
+            $inUntuk = false;
+            continue;
+        }
+        if (preg_match('/^UNTUK\b/i', $text)) {
+            $addClass($el, 'spt-untuk');
+            $setBlock($el, 'untuk');
+            $inDasar = false;
+            $inUntuk = true;
+            $untukItems = [];
+            continue;
+        }
+        if ($inUntuk && preg_match('/^\d+[\.\)]\s*/', $text)) {
+            $addClass($el, 'spt-untuk-item');
+            $el->setAttribute('data-spt-item', 'untuk');
+            $untukItems[] = $el;
+            continue;
+        }
+        if (preg_match('/^Lampiran\s+Surat\b/i', $text)) {
+            $addClass($el, 'spt-lampiran');
+            $setBlock($el, 'lampiran');
+            $inLampiran = true;
+            $inDasar = false;
+            $inUntuk = false;
+            continue;
+        }
+        if (stripos($text, 'Bojonegoro') !== false && stripos($text, 'NIP') !== false) {
+            $addClass($el, 'spt-ttd');
+            $setBlock($el, 'ttd');
+        }
+    }
+
+    if ($dasarItems) {
+        $addClass(end($dasarItems), 'spt-dasar-last');
+    }
+    if ($untukItems) {
+        $addClass(end($untukItems), 'spt-untuk-last');
+    }
+}
+
+/**
+ * CSS pratinjau. Nilai yang bisa diubah memakai CSS variable agar
+ * perubahan slider/drag tidak perlu memuat ulang halaman.
+ */
+function spt_preview_css(array $settings, array $page, $dominantFont)
+{
+    $defaults = spt_layout_default_values();
+    $mmKeys = ['margin_top', 'margin_bottom', 'margin_left', 'margin_right'];
+    $vars = [];
+    foreach ($defaults as $key => $default) {
+        if ($key === 'lock_ttd') {
+            continue;
+        }
+        $value = $settings[$key] ?? $default;
+        if (in_array($key, $mmKeys, true)) {
+            $string = rtrim(rtrim(number_format((float)$value, 2, '.', ''), '0'), '.') . 'mm';
+        } elseif ($key === 'font_size') {
+            $string = rtrim(rtrim(number_format((float)$value, 2, '.', ''), '0'), '.') . 'pt';
+        } elseif ($key === 'line_height') {
+            $string = number_format((float)$value, 2, '.', '');
+        } else {
+            $string = rtrim(rtrim(number_format((float)$value, 2, '.', ''), '0'), '.') . 'px';
+        }
+        $vars[] = '--spt-' . str_replace('_', '-', $key) . ':' . $string;
+    }
+    $factor = $dominantFont > 0 ? ((float)$settings['font_size'] / $dominantFont) : 1.0;
+    $vars[] = '--spt-font-factor:' . number_format($factor, 4, '.', '');
+    $vars[] = '--spt-page-width:' . $page['width_mm'] . 'mm';
+    $vars[] = '--spt-page-height:' . $page['height_mm'] . 'mm';
+
+    $css = '<style>' . PHP_EOL;
+    $css .= ':root{' . implode(';', $vars) . '}' . PHP_EOL;
+    $css .= 'html,body{margin:0;padding:0;background:#e2e8f0;}' . PHP_EOL;
+    $css .= 'body{font-family:Arial,Helvetica,sans-serif;color:#000;overflow-x:hidden;}' . PHP_EOL;
+    $css .= '#sptPages{padding:38px 30px 46px 34px;}' . PHP_EOL;
+    $css .= '.spt-page{width:var(--spt-page-width);height:var(--spt-page-height);margin:0 auto 18px;background:#fff;'
+        . 'box-shadow:0 2px 10px rgba(15,23,42,.18);padding:var(--spt-margin-top) var(--spt-margin-right) '
+        . 'var(--spt-margin-bottom) var(--spt-margin-left);box-sizing:border-box;position:relative;'
+        // Arial di browser sedikit lebih lebar daripada Arial versi Word;
+        // pengurangan tipis ini menjaga titik pembungkusan baris tetap sama.
+        . 'letter-spacing:-0.005em;}' . PHP_EOL;
+    $css .= '.spt-page-inner{position:relative;}' . PHP_EOL;
+    $css .= '.spt-page *{box-sizing:border-box;}' . PHP_EOL;
+    // Word menghitung "single" sebagai ±1.15 em; kalikan agar pratinjau
+    // setinggi hasil PDF.
+    $css .= 'p,h0,h1,h2,h3,h4,h5,h6,h7,h8,h9,td,th,li{font-size:var(--spt-font-size);'
+        . 'line-height:calc(var(--spt-line-height) * 1.15)!important;}' . PHP_EOL;
+    $css .= 'h0,h1,h2,h3,h4,h5,h6,h7,h8,h9{display:block;font-weight:bold;margin-top:0;margin-bottom:0;}' . PHP_EOL;
+    $css .= 'p{margin:0;}' . PHP_EOL;
+    $css .= 'p:empty,h0:empty,h1:empty,h2:empty,h3:empty,h4:empty,h5:empty,h6:empty,h7:empty,h8:empty,h9:empty'
+        . '{min-height:calc(1em * var(--spt-line-height) * 1.15);}' . PHP_EOL;
+    $css .= 'table{border-collapse:collapse;border:0;width:100%;}' . PHP_EOL;
+    $css .= 'td,th{vertical-align:top;padding:0 2px;}' . PHP_EOL;
+    $css .= '.spt-tab{display:inline-block;width:.5in;}' . PHP_EOL;
+    $css .= '.spt-kop{margin-bottom:var(--spt-kop-bottom-spacing)!important;}' . PHP_EOL;
+    $css .= '.spt-kop-line,.spt-kop p,.spt-kop td{line-height:calc(1.15em + var(--spt-kop-line-spacing))!important;}' . PHP_EOL;
+    // Baris kop di Word hampir selebar area cetak (mis. nama cabang 16pt bold).
+    // Arial di browser sedikit lebih lebar sehingga baris itu pecah dua;
+    // perapatannya tipis saja agar lebar baris tetap sama dengan Word.
+    $css .= '.spt-kop-line{letter-spacing:-0.014em;}' . PHP_EOL;
+    $css .= '.spt-title{text-align:center!important;margin-top:var(--spt-judul-top-spacing)!important;margin-bottom:0!important;line-height:1.3!important;}' . PHP_EOL;
+    $css .= '.spt-nomor{text-align:center!important;margin-top:var(--spt-nomor-surat-spacing)!important;margin-bottom:var(--spt-judul-bottom-spacing)!important;line-height:1.3!important;}' . PHP_EOL;
+    $css .= '.spt-dasar{margin-top:var(--spt-dasar-top-spacing)!important;margin-bottom:var(--spt-dasar-item-spacing)!important;}' . PHP_EOL;
+    $css .= '.spt-dasar-item{margin-bottom:var(--spt-dasar-item-spacing)!important;}' . PHP_EOL;
+    $css .= '.spt-dasar-last{margin-bottom:var(--spt-dasar-bottom-spacing)!important;}' . PHP_EOL;
+    $css .= '.spt-memerintahkan{margin-top:var(--spt-memerintahkan-spacing)!important;margin-bottom:var(--spt-memerintahkan-spacing)!important;}' . PHP_EOL;
+    $css .= '.spt-kepada{margin-top:var(--spt-pegawai-top-spacing)!important;}' . PHP_EOL;
+    $css .= '.spt-pegawai-line{margin-top:0!important;margin-bottom:var(--spt-pegawai-line-spacing)!important;}' . PHP_EOL;
+    $css .= '.spt-pegawai-row + .spt-pegawai-row > td{padding-top:var(--spt-pegawai-gap-spacing)!important;}' . PHP_EOL;
+    $css .= '.spt-untuk{margin-top:var(--spt-untuk-top-spacing)!important;margin-bottom:var(--spt-untuk-item-spacing)!important;}' . PHP_EOL;
+    $css .= '.spt-untuk-item{margin-bottom:var(--spt-untuk-item-spacing)!important;}' . PHP_EOL;
+    $css .= '.spt-untuk-last{margin-bottom:var(--spt-untuk-bottom-spacing)!important;}' . PHP_EOL;
+    $css .= '.spt-b-insideh tr + tr > td{border-top:1px solid #000;}' . PHP_EOL;
+    $css .= '.spt-b-insidev td + td{border-left:1px solid #000;}' . PHP_EOL;
+    $css .= '.spt-b-top{border-top:1px solid #000;}' . PHP_EOL;
+    $css .= '.spt-b-left > tbody > tr > td:first-child,.spt-b-left > tr > td:first-child{border-left:1px solid #000;}' . PHP_EOL;
+    $css .= '.spt-b-right > tbody > tr > td:last-child,.spt-b-right > tr > td:last-child{border-right:1px solid #000;}' . PHP_EOL;
+    $css .= '.spt-b-bottom > tbody > tr:last-child > td,.spt-b-bottom > tr:last-child > td{border-bottom:1px solid #000;}' . PHP_EOL;
+    $css .= '.spt-ttd-anchor{position:relative;height:0;}' . PHP_EOL;
+    $css .= '.spt-txbx{position:absolute;z-index:3;}' . PHP_EOL;
+    $css .= '.spt-txbx-main{left:calc(var(--txbx-left,0mm) + var(--spt-ttd-x));top:calc(var(--txbx-top,0pt) + var(--spt-ttd-offset));}'
+        . PHP_EOL;
+    $css .= '.spt-txbx-static{left:var(--txbx-left,0mm);top:var(--txbx-top,0pt);}' . PHP_EOL;
+    $css .= '.spt-txbx .spt-ttd-line{white-space:pre-wrap;margin:0;}' . PHP_EOL;
+    $css .= '.spt-txbx .spt-ttd-date{margin-bottom:var(--spt-ttd-date-to-jabatan)!important;}' . PHP_EOL;
+    $css .= '.spt-txbx .spt-ttd-jabatan-last{margin-bottom:var(--spt-ttd-space-height)!important;}' . PHP_EOL;
+    $css .= '.spt-txbx .spt-ttd-name{margin-top:var(--spt-ttd-name-nip-spacing)!important;}' . PHP_EOL;
+    $css .= '[data-spt-block]{cursor:pointer;}' . PHP_EOL;
+    $css .= '[data-spt-block]:hover{outline:1px dashed rgba(5,150,105,.55);outline-offset:2px;}' . PHP_EOL;
+    $css .= '[data-spt-block].is-selected{outline:2px solid #059669;outline-offset:2px;background:rgba(16,185,129,.04);}' . PHP_EOL;
+    $css .= '.spt-ruler{position:fixed;background:#f8fafc;z-index:70;pointer-events:none;}' . PHP_EOL;
+    $css .= '#sptRulerH{left:0;top:0;width:100%;height:22px;border-bottom:1px solid #cbd5e1;}' . PHP_EOL;
+    $css .= '#sptRulerV{left:0;top:0;width:22px;height:100%;border-right:1px solid #cbd5e1;}' . PHP_EOL;
+    $css .= '.spt-margin-marker{position:fixed;z-index:80;background:#059669;border:1px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.3);}'
+        . PHP_EOL;
+    $css .= '.spt-margin-marker.spt-mm-h{width:5px;height:22px;cursor:col-resize;}' . PHP_EOL;
+    $css .= '.spt-margin-marker.spt-mm-v{width:22px;height:5px;cursor:row-resize;}' . PHP_EOL;
+    $css .= '.spt-gap-handle{position:absolute;left:0;right:0;height:9px;margin-top:-4px;z-index:40;cursor:row-resize;'
+        . 'display:flex;align-items:center;justify-content:center;pointer-events:auto;}' . PHP_EOL;
+    $css .= '.spt-gap-handle::before{content:"";position:absolute;left:0;right:0;top:4px;border-top:1px dashed transparent;transition:border-color .12s;}'
+        . PHP_EOL;
+    $css .= '.spt-gap-handle:hover::before,.spt-gap-handle.is-dragging::before{border-top-color:#059669;}' . PHP_EOL;
+    $css .= '.spt-gap-pill{position:relative;z-index:1;padding:1px 6px;border-radius:999px;background:#059669;color:#fff;'
+        . 'font:600 9px/1.4 Arial,sans-serif;white-space:nowrap;opacity:0;transition:opacity .12s;}' . PHP_EOL;
+    $css .= '.spt-gap-handle:hover .spt-gap-pill,.spt-gap-handle.is-dragging .spt-gap-pill{opacity:1;}' . PHP_EOL;
+    $css .= '.spt-ttd-move{position:absolute;z-index:45;width:22px;height:22px;border-radius:6px;background:#059669;color:#fff;'
+        . 'display:flex;align-items:center;justify-content:center;cursor:move;font:700 12px/1 Arial,sans-serif;'
+        . 'box-shadow:0 2px 6px rgba(0,0,0,.25);}' . PHP_EOL;
+    $css .= '.spt-ttd-move:hover{background:#047857;}' . PHP_EOL;
+    $css .= '@media print{#sptRulerH,#sptRulerV,.spt-gap-handle,.spt-ttd-move,.spt-margin-marker{display:none!important;}}' . PHP_EOL;
+    $css .= '</style>';
+
+    return $css;
+}
+
+function spt_preview_unit_for_key($key)
+{
+    if (in_array($key, ['margin_top', 'margin_bottom', 'margin_left', 'margin_right'], true)) {
+        return 'mm';
+    }
+    if ($key === 'font_size') {
+        return 'pt';
+    }
+    if ($key === 'line_height') {
+        return '';
+    }
+    return 'px';
+}
+
+/**
+ * Cetak halaman pratinjau interaktif lalu hentikan request.
+ */
+function spt_preview_output($docxPath, array $settings, $tempDir)
+{
+    $bundle = spt_preview_docx_bundle($docxPath);
+    $defaults = spt_layout_read_docx_defaults($docxPath);
+    $dominantFont = (float)($defaults['font_size'] ?? 12.0);
+
+    $phpWordHtml = '';
+    $htmlPath = $tempDir . DIRECTORY_SEPARATOR . 'spt_preview_' . uniqid() . '.html';
+    $oldReporting = error_reporting(E_ALL & ~E_DEPRECATED & ~E_WARNING & ~E_NOTICE);
+    try {
+        $phpWord = IOFactory::load($docxPath, 'Word2007');
+        $writer = IOFactory::createWriter($phpWord, 'HTML');
+        $writer->save($htmlPath);
+        if (is_file($htmlPath)) {
+            $phpWordHtml = (string)file_get_contents($htmlPath);
+        }
+    } finally {
+        error_reporting($oldReporting);
+        if (is_file($htmlPath)) {
+            @unlink($htmlPath);
+        }
+    }
+
+    header('Content-Type: text/html; charset=utf-8');
+    header('Cache-Control: no-store, max-age=0');
+
+    if ($phpWordHtml === '') {
+        echo '<!DOCTYPE html><html lang="id"><meta charset="utf-8"><body style="font-family:Arial;padding:24px;">'
+            . '<p>Pratinjau interaktif tidak dapat dibuat. Gunakan mode PDF.</p></body></html>';
+        exit;
+    }
+
+    $pagesHtml = spt_preview_build_pages($phpWordHtml, $bundle);
+    $css = spt_preview_css($settings, $bundle['page'], $dominantFont);
+
+    $ranges = [];
+    foreach (spt_layout_ranges() as $key => $range) {
+        $ranges[$key] = ['min' => $range[0], 'max' => $range[1], 'step' => $range[2]];
+    }
+    $units = [];
+    foreach (array_keys(spt_layout_default_values()) as $key) {
+        if ($key !== 'lock_ttd') {
+            $units[$key] = spt_preview_unit_for_key($key);
+        }
+    }
+    $config = [
+        'settings' => $settings,
+        'ranges' => $ranges,
+        'units' => $units,
+        'dominantFont' => $dominantFont,
+        'pageWidthMm' => $bundle['page']['width_mm'],
+        'pageHeightMm' => $bundle['page']['height_mm'],
+    ];
+
+    echo '<!DOCTYPE html>' . PHP_EOL;
+    echo '<html lang="id"><head><meta charset="utf-8">' . PHP_EOL;
+    echo '<meta name="viewport" content="width=device-width, initial-scale=1">' . PHP_EOL;
+    echo '<title>Pratinjau Surat Tugas</title>' . PHP_EOL;
+    echo $css . PHP_EOL;
+    echo '</head><body>' . PHP_EOL;
+    echo '<canvas id="sptRulerH" class="spt-ruler"></canvas>' . PHP_EOL;
+    echo '<canvas id="sptRulerV" class="spt-ruler"></canvas>' . PHP_EOL;
+    echo $pagesHtml . PHP_EOL;
+    echo '<script>window.SPT_PREVIEW_CONFIG=' . json_encode($config, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP) . ';</script>' . PHP_EOL;
+    echo '<script src="../assets/js/spt-preview.js?v=2"></script>' . PHP_EOL;
+    echo '</body></html>';
+    exit;
 }
 
 if (defined('SPT_TEST_MODE')) {
@@ -2859,6 +4319,10 @@ main > .max-w-7xl { max-width: none !important; margin: 0 !important; height: 10
 .spt-badge-neutral { background: #f1f5f9; color: #475569; }
 .spt-badge-amber { background: #fef3c7; color: #92400e; }
 .spt-badge-emerald { background: #d1fae5; color: #047857; }
+.spt-mode { display: inline-flex; align-items: center; gap: 2px; padding: 2px; border: 1px solid #e2e8f0; border-radius: 8px; background: #f8fafc; }
+.spt-mode-btn { display: inline-flex; align-items: center; gap: 4px; padding: 4px 9px; border: 0; border-radius: 6px; background: transparent; color: #64748b; font-size: 10.5px; font-weight: 600; white-space: nowrap; cursor: pointer; transition: .15s ease; }
+.spt-mode-btn:hover { color: #0f172a; }
+.spt-mode-btn.is-active { background: #fff; color: #047857; box-shadow: 0 1px 3px rgba(15,23,42,.14); }
 .spt-btn { display: inline-flex; align-items: center; justify-content: center; gap: 4px; padding: 6px 9px; border-radius: 7px; font-size: 10.5px; font-weight: 600; white-space: nowrap; transition: .15s ease; text-decoration: none; cursor: pointer; }
 .spt-btn-emerald { background: #059669; color: #fff; border: 1px solid #059669; }
 .spt-btn-emerald:hover { background: #047857; border-color: #047857; }
@@ -2893,7 +4357,7 @@ main > .max-w-7xl { max-width: none !important; margin: 0 !important; height: 10
                             <i class="bx bx-slider-alt" style="color:#059669;font-size:16px;"></i>
                             <span>Penyesuaian Tata Letak</span>
                         </h1>
-                        <p class="spt-inspector-sub">Geser slider, ketik angka, atau gunakan tombol &minus; / +. Pratinjau PDF diperbarui saat Anda menekan Terapkan.</p>
+                        <p class="spt-inspector-sub">Geser slider atau tarik blok/margin langsung di pratinjau. Mode Interaktif langsung memperbarui tampilan.</p>
                     </div>
                 </div>
                 <div class="spt-preset-row">
@@ -3109,11 +4573,21 @@ main > .max-w-7xl { max-width: none !important; margin: 0 !important; height: 10
                     <span class="spt-doc-id" title="Surat Tugas #<?= htmlspecialchars($surat['nomor_surat']) ?>">Surat Tugas #<?= htmlspecialchars($surat['nomor_surat']) ?></span>
                 </div>
                 <div class="spt-toolbar-center">
+                    <div class="spt-mode" id="previewMode" role="group" aria-label="Mode pratinjau">
+                        <button type="button" class="spt-mode-btn is-active" data-mode="html" title="Klik blok surat lalu geser untuk menata letak">
+                            <i class="bx bx-move" style="font-size:13px;"></i>
+                            <span>Interaktif</span>
+                        </button>
+                        <button type="button" class="spt-mode-btn" data-mode="pdf" title="Pratinjau PDF, sama persis dengan hasil cetak">
+                            <i class="bx bxs-file-pdf" style="font-size:13px;"></i>
+                            <span>PDF</span>
+                        </button>
+                    </div>
                     <span id="pageBadge" class="spt-badge spt-badge-neutral">Memeriksa halaman&hellip;</span>
                     <span id="saveBadge" class="spt-badge spt-badge-emerald">Tersimpan</span>
                 </div>
                 <div class="spt-toolbar-right">
-                    <a href="generate-surat.php?id=<?= $sid ?>&format=docx" class="spt-btn spt-btn-outline" title="Unduh Word (.docx)">
+                    <a id="downloadDocxBtn" href="generate-surat.php?id=<?= $sid ?>&format=docx" class="spt-btn spt-btn-outline" title="Unduh Word (.docx)">
                         <i class="bx bx-file-blank" style="font-size:14px;"></i>
                         <span>Word</span>
                     </a>
@@ -3132,7 +4606,7 @@ main > .max-w-7xl { max-width: none !important; margin: 0 !important; height: 10
                 <div id="pdfPreviewLoading" class="spt-overlay spt-hidden">
                     <div style="display:flex;flex-direction:column;align-items:center;gap:8px;text-align:center;">
                         <div class="spt-spinner"></div>
-                        <p style="font-size:12px;font-weight:600;color:#334155;">Memperbarui pratinjau PDF&hellip;</p>
+                        <p style="font-size:12px;font-weight:600;color:#334155;">Memperbarui pratinjau&hellip;</p>
                         <p style="font-size:10.5px;color:#64748b;">Menyusun ulang tata letak surat</p>
                     </div>
                 </div>
@@ -3153,6 +4627,7 @@ main > .max-w-7xl { max-width: none !important; margin: 0 !important; height: 10
     const STORAGE_KEY = 'spt_layout_' + SURAT_ID;
     const WIDTH_KEY = 'spt_inspector_width';
     const SIDEBAR_KEY = 'spt_sidebar_collapsed';
+    const MODE_KEY = 'spt_preview_mode';
 
     const STEP_CONFIG = {
         margin_top: { min: 5, max: 40, step: 0.5, decimals: 1, unit: 'mm' },
@@ -3197,7 +4672,9 @@ main > .max-w-7xl { max-width: none !important; margin: 0 !important; height: 10
     const frame = document.getElementById('pdfPreviewFrame');
     const loading = document.getElementById('pdfPreviewLoading');
     const downloadBtn = document.getElementById('downloadPdfBtn');
+    const docxBtn = document.getElementById('downloadDocxBtn');
     const printBtn = document.getElementById('printPdfBtn');
+    const modeGroup = document.getElementById('previewMode');
     const status = document.getElementById('layoutStatus');
     const lockCheckbox = document.getElementById('layoutLockTtd');
     const applyBtn = document.getElementById('layoutApplyBtn');
@@ -3230,6 +4707,8 @@ main > .max-w-7xl { max-width: none !important; margin: 0 !important; height: 10
     let autoFitTimer = null;
     let pendingCountUrl = null;
     let restoredFromStorage = false;
+    let previewMode = 'html';
+    let syncTimer = null;
 
     function clamp(key, value) {
         const cfg = STEP_CONFIG[key];
@@ -3359,6 +4838,7 @@ main > .max-w-7xl { max-width: none !important; margin: 0 !important; height: 10
         updateAccordionBadges();
         updatePresetState();
         updateStatus();
+        schedulePreviewSync();
     }
 
     function setAccordion(acc, open) {
@@ -3428,6 +4908,59 @@ main > .max-w-7xl { max-width: none !important; margin: 0 !important; height: 10
             params.set('lock_ttd', state.lock_ttd ? '1' : '0');
         }
         return params;
+    }
+
+    function currentSettings() {
+        const values = {};
+        KEYS.forEach(function (key) { values[key] = state[key]; });
+        values.lock_ttd = state.lock_ttd ? 1 : 0;
+        return values;
+    }
+
+    function buildHtmlParams() {
+        const params = buildParams(false);
+        params.set('format', 'preview');
+        return params;
+    }
+
+    function htmlPreviewUrl() {
+        return 'generate-surat.php?' + buildHtmlParams().toString();
+    }
+
+    function updateDownloadLinks() {
+        if (downloadBtn) {
+            downloadBtn.href = 'generate-surat.php?' + buildParams(false).toString();
+        }
+        if (docxBtn) {
+            const params = buildParams(false);
+            params.set('format', 'docx');
+            docxBtn.href = 'generate-surat.php?' + params.toString();
+        }
+    }
+
+    function loadHtmlPreview() {
+        if (!frame) return false;
+        if (currentBlobUrl) {
+            try { URL.revokeObjectURL(currentBlobUrl); } catch (e) {}
+            currentBlobUrl = null;
+        }
+        showLoading(true);
+        frame.src = htmlPreviewUrl();
+        return true;
+    }
+
+    // Kirim nilai terbaru ke pratinjau interaktif tanpa memuat ulang halaman.
+    function schedulePreviewSync() {
+        if (previewMode !== 'html' || !frame || !frame.contentWindow) return;
+        if (syncTimer) clearTimeout(syncTimer);
+        syncTimer = setTimeout(function () {
+            syncTimer = null;
+            try {
+                frame.contentWindow.postMessage({ type: 'set-settings', settings: currentSettings() }, '*');
+            } catch (e) {
+                // iframe belum siap; pengaturan dikirim lagi saat pesan ready.
+            }
+        }, 60);
     }
 
     function persistLocal() {
@@ -3523,12 +5056,113 @@ main > .max-w-7xl { max-width: none !important; margin: 0 !important; height: 10
     async function applyLayout() {
         if (!frame) return false;
         active = true;
-        const previewUrl = 'generate-surat.php?' + buildParams(true).toString();
-        const downloadUrl = 'generate-surat.php?' + buildParams(false).toString();
-        if (downloadBtn) downloadBtn.href = downloadUrl;
         persistLocal();
         updateHistory();
+        updateDownloadLinks();
+        if (previewMode === 'html') {
+            // Pratinjau interaktif memperbarui dirinya lewat postMessage.
+            schedulePreviewSync();
+            markApplied();
+            return true;
+        }
+        const previewUrl = 'generate-surat.php?' + buildParams(true).toString();
         return loadPreview(previewUrl);
+    }
+
+    function markApplied() {
+        appliedState = Object.assign({}, state, { lock_ttd: state.lock_ttd ? 1 : 0 });
+        updateDirtyUi();
+        updateAccordionBadges();
+        updatePresetState();
+        updateStatus();
+    }
+
+    // ------------------------------------------------------------------
+    // Jembatan pesan dengan pratinjau interaktif.
+    // ------------------------------------------------------------------
+    const BLOCK_ACCORDION = {
+        kop: 'acc-kop',
+        title: 'acc-judul',
+        nomor: 'acc-judul',
+        dasar: 'acc-dasar',
+        memerintahkan: 'acc-dasar',
+        pegawai: 'acc-pegawai',
+        untuk: 'acc-untuk',
+        ttd: 'acc-ttd'
+    };
+
+    function openAccordionById(id) {
+        const body = document.getElementById(id);
+        if (!body) return;
+        const acc = body.closest('.spt-acc');
+        if (!acc) return;
+        if (body.classList.contains('is-collapsed')) {
+            accordions.forEach(function (other) {
+                if (other !== acc) setAccordion(other, false);
+            });
+            setAccordion(acc, true);
+            updateExpandAllLabel();
+        }
+        try {
+            acc.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+        } catch (e) {
+            acc.scrollIntoView();
+        }
+    }
+
+    function syncFrameSettings() {
+        if (!frame || !frame.contentWindow) return;
+        try {
+            frame.contentWindow.postMessage({ type: 'set-settings', settings: currentSettings() }, '*');
+        } catch (e) {
+            // iframe belum siap
+        }
+    }
+
+    window.addEventListener('message', function (event) {
+        if (!frame || event.source !== frame.contentWindow) return;
+        const data = event.data || {};
+        if (data.type === 'ready') {
+            showLoading(false);
+            setApplyLoading(false);
+            setAutoFitLoading(false);
+            syncFrameSettings();
+            if (typeof data.count === 'number') updatePageBadge(data.count);
+        } else if (data.type === 'page-estimate') {
+            if (typeof data.count === 'number') updatePageBadge(data.count);
+        } else if (data.type === 'settings-change' && data.settings) {
+            KEYS.forEach(function (key) {
+                if (data.settings[key] !== undefined) state[key] = clamp(key, data.settings[key]);
+            });
+            if (data.settings.lock_ttd !== undefined) {
+                state.lock_ttd = data.settings.lock_ttd ? 1 : 0;
+            }
+            syncUi();
+            markDirty();
+        } else if (data.type === 'block-select' && data.block) {
+            const accId = BLOCK_ACCORDION[data.block];
+            if (accId) openAccordionById(accId);
+        }
+    });
+
+    function setPreviewMode(mode, persist) {
+        previewMode = mode === 'pdf' ? 'pdf' : 'html';
+        renderModeButtons();
+        if (persist) {
+            try { localStorage.setItem(MODE_KEY, previewMode); } catch (e) {}
+        }
+        if (previewMode === 'pdf') {
+            loadPreview('generate-surat.php?' + buildParams(true).toString());
+        } else {
+            loadHtmlPreview();
+        }
+    }
+
+    function renderModeButtons() {
+        if (!modeGroup) return;
+        modeGroup.querySelectorAll('.spt-mode-btn').forEach(function (btn) {
+            btn.classList.toggle('is-active', btn.dataset.mode === previewMode);
+        });
     }
 
     function resetKey(key) {
@@ -3657,6 +5291,14 @@ main > .max-w-7xl { max-width: none !important; margin: 0 !important; height: 10
         });
     }
 
+    if (modeGroup) {
+        modeGroup.addEventListener('click', function (event) {
+            const btn = event.target.closest('.spt-mode-btn');
+            if (!btn || btn.dataset.mode === previewMode) return;
+            setPreviewMode(btn.dataset.mode, true);
+        });
+    }
+
     // Keyboard shortcut Ctrl/Cmd + Enter
     document.addEventListener('keydown', function (event) {
         if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
@@ -3671,6 +5313,15 @@ main > .max-w-7xl { max-width: none !important; margin: 0 !important; height: 10
             event.preventDefault();
             await applyLayout();
             window.location.href = downloadBtn.href;
+        });
+    }
+
+    if (docxBtn) {
+        docxBtn.addEventListener('click', async function (event) {
+            if (!isDirty()) return;
+            event.preventDefault();
+            await applyLayout();
+            window.location.href = docxBtn.href;
         });
     }
 
@@ -3716,10 +5367,12 @@ main > .max-w-7xl { max-width: none !important; margin: 0 !important; height: 10
                 const nextUrl = new URL(window.location.href);
                 nextUrl.search = 'id=' + encodeURIComponent(SURAT_ID);
                 window.history.replaceState(null, '', nextUrl.toString());
-                if (downloadBtn) {
-                    downloadBtn.href = 'generate-surat.php?id=' + encodeURIComponent(SURAT_ID) + '&format=pdf';
+                updateDownloadLinks();
+                if (previewMode === 'html') {
+                    loadHtmlPreview();
+                } else {
+                    loadPreview('generate-surat.php?id=' + encodeURIComponent(SURAT_ID) + '&format=pdf&inline=1');
                 }
-                loadPreview('generate-surat.php?id=' + encodeURIComponent(SURAT_ID) + '&format=pdf&inline=1');
             }
         });
     }
@@ -3865,9 +5518,23 @@ main > .max-w-7xl { max-width: none !important; margin: 0 !important; height: 10
     }
 
     syncUi();
+    updateDownloadLinks();
+
+    try {
+        if (localStorage.getItem(MODE_KEY) === 'pdf') previewMode = 'pdf';
+    } catch (e) {}
+    renderModeButtons();
 
     if (restoredFromStorage) {
-        applyLayout();
+        persistLocal();
+        updateHistory();
+        markApplied();
+    }
+
+    if (previewMode === 'html') {
+        loadHtmlPreview();
+    } else if (restoredFromStorage) {
+        loadPreview('generate-surat.php?' + buildParams(true).toString());
     } else {
         loadPreview(INITIAL_PREVIEW_URL);
     }
@@ -3904,11 +5571,20 @@ Settings::setTempDir($tempDir);
     spt_fix_docx_typos($tempDocx);
     spt_normalize_docx($tempDocx);
 
-    // Salinan DOCX yang sudah disesuaikan layout, dipakai untuk Word COM/LibreOffice.
-    // File asli tetap disimpan untuk download Word dan fallback Dompdf (CSS injection).
+    if ($format === 'preview') {
+        // Pratinjau interaktif: HTML dari DOCX + CSS dinamis, tanpa konversi PDF.
+        register_shutdown_function(function () use ($tempDocx) {
+            @unlink($tempDocx);
+        });
+        spt_preview_output($tempDocx, $layout_initial, $tempDir);
+        exit;
+    }
+
+    // Salinan DOCX yang sudah disesuaikan layout, dipakai untuk unduhan Word
+    // dan untuk Word COM/LibreOffice. File asli tetap dipakai fallback Dompdf.
     $layout_adjusted_docx = null;
     $pdf_source_docx = $tempDocx;
-    if ($format === 'pdf' && $layout_active && $layout_settings !== null) {
+    if (($format === 'pdf' || $format === 'docx') && $layout_active && $layout_settings !== null) {
         $layout_adjusted_docx = $tempDir . DIRECTORY_SEPARATOR . 'spt_layout_' . uniqid() . '.docx';
         if (@copy($tempDocx, $layout_adjusted_docx)) {
             if (spt_layout_apply_to_docx($layout_adjusted_docx, $layout_settings)) {
@@ -4065,11 +5741,13 @@ Settings::setTempDir($tempDir);
         if (ob_get_length()) {
             ob_clean();
         }
+        $docxSource = $layout_adjusted_docx ?: $tempDocx;
         header('Content-Type: application/vnd.openxmlformats-officedocument.wordprocessingml.document');
         header('Content-Disposition: attachment; filename="Surat_Tugas_' . $surat['nomor_surat'] . '.docx"');
-        header('Content-Length: ' . filesize($tempDocx));
-        readfile($tempDocx);
+        header('Content-Length: ' . filesize($docxSource));
+        readfile($docxSource);
         @unlink($tempDocx);
+        if ($layout_adjusted_docx) @unlink($layout_adjusted_docx);
     } catch (Exception $e) {
         if (file_exists($tempDocx)) @unlink($tempDocx);
         if ($layout_adjusted_docx && file_exists($layout_adjusted_docx)) @unlink($layout_adjusted_docx);
