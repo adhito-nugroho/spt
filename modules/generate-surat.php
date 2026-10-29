@@ -685,6 +685,266 @@ function spt_layout_align_tables_top(DOMDocument $document)
 }
 
 /**
+ * Baris tabel (w:tr) yang memuat node, atau null jika node tidak berada
+ * di dalam tabel.
+ */
+function spt_layout_row_of(DOMElement $node)
+{
+    $ns = spt_layout_w_ns();
+    for ($parent = $node->parentNode; $parent instanceof DOMElement; $parent = $parent->parentNode) {
+        if ($parent->namespaceURI !== $ns) {
+            continue;
+        }
+        if ($parent->localName === 'tr') {
+            return $parent;
+        }
+        if ($parent->localName === 'body') {
+            break;
+        }
+    }
+    return null;
+}
+
+function spt_layout_row_text(DOMElement $row)
+{
+    $text = '';
+    foreach ($row->getElementsByTagNameNS(spt_layout_w_ns(), 't') as $node) {
+        $text .= $node->textContent;
+    }
+    return trim(preg_replace('/\s+/u', ' ', $text));
+}
+
+function spt_layout_row_is_empty(DOMElement $row)
+{
+    return spt_layout_row_text($row) === '';
+}
+
+/**
+ * Atur jarak atas/bawah seluruh sel pada satu baris tabel. Jarak diberikan
+ * sebagai cell margin agar semua kolom pada baris tersebut bergeser bersama.
+ */
+function spt_layout_row_set_margins(DOMElement $row, DOMDocument $document, $topTwips = null, $bottomTwips = null)
+{
+    $ns = spt_layout_w_ns();
+    $tcPrOrder = [
+        'cnfStyle', 'tcW', 'gridSpan', 'hMerge', 'vMerge', 'tcBorders', 'shd',
+        'noWrap', 'tcMar', 'textDirection', 'tcFitText', 'vAlign', 'hideMark',
+        'headers', 'cellIns', 'cellDel', 'cellMerge', 'tcPrChange',
+    ];
+    $marginOrder = ['top', 'start', 'left', 'bottom', 'end', 'right'];
+
+    foreach ($row->childNodes as $cell) {
+        if (!$cell instanceof DOMElement || $cell->localName !== 'tc' || $cell->namespaceURI !== $ns) {
+            continue;
+        }
+
+        $tcPr = spt_layout_child($cell, 'tcPr');
+        if (!$tcPr) {
+            $tcPr = $document->createElementNS($ns, 'w:tcPr');
+            if ($cell->firstChild) {
+                $cell->insertBefore($tcPr, $cell->firstChild);
+            } else {
+                $cell->appendChild($tcPr);
+            }
+        }
+
+        // Sel lanjutan dari vMerge tidak punya area sendiri; lewati.
+        $vMerge = spt_layout_child($tcPr, 'vMerge');
+        if ($vMerge && !$vMerge->hasAttributeNS($ns, 'val')) {
+            continue;
+        }
+
+        $margins = spt_layout_child($tcPr, 'tcMar');
+        if (!$margins) {
+            $margins = $document->createElementNS($ns, 'w:tcMar');
+            spt_layout_insert_ordered($tcPr, $margins, $tcPrOrder);
+        }
+
+        foreach ([['top', $topTwips], ['bottom', $bottomTwips]] as $pair) {
+            list($side, $twips) = $pair;
+            if ($twips === null) {
+                continue;
+            }
+            $node = spt_layout_child($margins, $side);
+            if (!$node) {
+                $node = $document->createElementNS($ns, 'w:' . $side);
+                spt_layout_insert_ordered($margins, $node, $marginOrder);
+            }
+            $node->setAttributeNS($ns, 'w:w', (string)max(0, (int)round($twips)));
+            $node->setAttributeNS($ns, 'w:type', 'dxa');
+        }
+    }
+}
+
+/**
+ * Hapus spasi paragraf (before/after) di seluruh sel baris agar jarak benar
+ * benar dikendalikan oleh cell margin baris.
+ */
+function spt_layout_row_zero_paragraph_spacing(DOMElement $row, DOMDocument $document)
+{
+    $ns = spt_layout_w_ns();
+    foreach ($row->getElementsByTagNameNS($ns, 'p') as $paragraph) {
+        $spacing = spt_layout_spacing($paragraph, $document);
+        $spacing->setAttributeNS($ns, 'w:before', '0');
+        $spacing->setAttributeNS($ns, 'w:after', '0');
+    }
+}
+
+/**
+ * Ciutkan baris tabel kosong (tinggi dan margin minimal).
+ */
+function spt_layout_row_collapse(DOMElement $row, DOMDocument $document)
+{
+    spt_layout_row_zero_paragraph_spacing($row, $document);
+    foreach ($row->getElementsByTagNameNS(spt_layout_w_ns(), 'p') as $paragraph) {
+        spt_layout_collapse_paragraph($paragraph, $document);
+    }
+    spt_layout_row_set_margins($row, $document, 0, 0);
+
+    $trPr = spt_layout_child($row, 'trPr');
+    if ($trPr) {
+        $height = spt_layout_child($trPr, 'trHeight');
+        if ($height) {
+            $ns = spt_layout_w_ns();
+            $height->setAttributeNS($ns, 'w:val', '20');
+            $height->setAttributeNS($ns, 'w:hRule', 'exact');
+        }
+    }
+}
+
+/**
+ * Kumpulkan baris tabel unik untuk rentang paragraf [from, to].
+ * Null jika ada paragraf yang berada di luar tabel (blok campuran).
+ */
+function spt_layout_rows_in_range(array $paragraphs, $from, $to)
+{
+    if ($from === null || $to === null || $to < $from) {
+        return [];
+    }
+
+    $rows = [];
+    for ($i = $from; $i <= $to; $i++) {
+        if (!isset($paragraphs[$i])) {
+            return null;
+        }
+        $row = spt_layout_row_of($paragraphs[$i]);
+        if (!$row) {
+            return null;
+        }
+        if (!in_array($row, $rows, true)) {
+            $rows[] = $row;
+        }
+    }
+    return $rows;
+}
+
+/**
+ * Terapkan jarak blok pada baris tabel: jarak atas di baris pertama, jarak
+ * antar butir di baris tengah, dan jarak bawah di baris terakhir.
+ */
+function spt_layout_apply_row_block(array $rows, DOMDocument $document, $topTwips, $itemTwips, $bottomTwips)
+{
+    $contentRows = [];
+    foreach ($rows as $row) {
+        if (spt_layout_row_is_empty($row)) {
+            spt_layout_row_collapse($row, $document);
+            continue;
+        }
+        spt_layout_row_zero_paragraph_spacing($row, $document);
+        $contentRows[] = $row;
+    }
+
+    $last = count($contentRows) - 1;
+    foreach ($contentRows as $index => $row) {
+        $top = $index === 0 ? $topTwips : 0;
+        $bottom = $index === $last ? $bottomTwips : $itemTwips;
+        spt_layout_row_set_margins($row, $document, $top, $bottom);
+    }
+}
+
+/**
+ * Template surat bisa menempatkan "Dasar", "Kepada", dan "Untuk" dalam satu
+ * baris tabel multi-kolom (label di kolom awal, isi di kolom akhir). Untuk
+ * blok seperti itu jarak vertikal harus diatur per baris lewat cell margin;
+ * spasi paragraf hanya menggeser label sehingga label dan isi tidak sejajar.
+ */
+function spt_layout_apply_table_row_blocks(DOMDocument $document, array $paragraphs, array $blocks, array $settings)
+{
+    // BLOK DASAR
+    if (($blocks['dasar'] ?? null) !== null && ($blocks['dasar_end'] ?? null) !== null) {
+        $rows = spt_layout_rows_in_range($paragraphs, $blocks['dasar'], $blocks['dasar_end']);
+        if (is_array($rows) && !empty($rows)) {
+            spt_layout_apply_row_block(
+                $rows,
+                $document,
+                spt_layout_px_to_twips($settings['dasar_top_spacing'] ?? 6),
+                spt_layout_px_to_twips($settings['dasar_item_spacing'] ?? 3),
+                spt_layout_px_to_twips($settings['dasar_bottom_spacing'] ?? 8)
+            );
+        }
+    }
+
+    // BLOK PEGAWAI
+    if (($blocks['kepada'] ?? null) !== null) {
+        $rows = spt_layout_rows_in_range($paragraphs, $blocks['kepada'], $blocks['pegawai_end'] ?? null);
+        if (is_array($rows) && !empty($rows)) {
+            $pegawaiTop = spt_layout_px_to_twips($settings['pegawai_top_spacing'] ?? 6);
+            $pegawaiGap = spt_layout_px_to_twips($settings['pegawai_gap_spacing'] ?? 8);
+            $pegawaiLine = spt_layout_px_to_twips($settings['pegawai_line_spacing'] ?? 2);
+
+            $contentRows = [];
+            foreach ($rows as $row) {
+                if (spt_layout_row_is_empty($row)) {
+                    spt_layout_row_collapse($row, $document);
+                    continue;
+                }
+                spt_layout_row_zero_paragraph_spacing($row, $document);
+                $contentRows[] = $row;
+            }
+
+            $isEmployeeStart = static function (DOMElement $row) {
+                $text = spt_layout_row_text($row);
+                // Label "Nama :" menandai awal data pegawai. Hindari kata
+                // "nama" yang muncul di teks tugas (mis. "atas nama ...").
+                return (bool)preg_match('/Nama\s*:/iu', $text)
+                    || (bool)preg_match('/^\s*\d+[\.\s]/u', $text);
+            };
+
+            $total = count($contentRows);
+            foreach ($contentRows as $index => $row) {
+                if ($index === 0) {
+                    $top = $pegawaiTop;
+                } elseif ($isEmployeeStart($row)) {
+                    $top = $pegawaiGap;
+                } else {
+                    $top = 0;
+                }
+
+                $nextIsStart = isset($contentRows[$index + 1]) && $isEmployeeStart($contentRows[$index + 1]);
+                $hasNext = isset($contentRows[$index + 1]);
+                $bottom = ($hasNext && !$nextIsStart) ? $pegawaiLine : 0;
+
+                spt_layout_row_set_margins($row, $document, $top, $bottom);
+            }
+        }
+    }
+
+    // BLOK UNTUK
+    if (($blocks['untuk'] ?? null) !== null && ($blocks['untuk_end'] ?? null) !== null) {
+        $rows = spt_layout_rows_in_range($paragraphs, $blocks['untuk'], $blocks['untuk_end']);
+        if (is_array($rows) && !empty($rows)) {
+            spt_layout_apply_row_block(
+                $rows,
+                $document,
+                spt_layout_px_to_twips($settings['untuk_top_spacing'] ?? 6),
+                spt_layout_px_to_twips($settings['untuk_item_spacing'] ?? 3),
+                spt_layout_px_to_twips($settings['untuk_bottom_spacing'] ?? 10)
+            );
+        }
+    }
+}
+
+/**
  * Hitung line-height aman (twips) untuk judul/nomor berdasarkan ukuran
  * huruf terbesar di paragraf tersebut.
  */
@@ -1155,7 +1415,9 @@ function spt_layout_apply_to_docx($docxPath, array $settings)
             }
 
             if ($ttdStart === null) {
-                $isPlaceLine = stripos($text, 'Bojonegoro') !== false
+                // Baris tempat & tanggal selalu diawali nama kota; teks tugas
+                // yang menyebut kota (mis. "… di Bojonegoro") tidak dihitung.
+                $isPlaceLine = preg_match('/^Bojonegoro\b/iu', $text)
                     && stripos($text, 'Jalan') === false
                     && stripos($text, 'DINAS') === false
                     && stripos($text, 'KABUPATEN') === false;
@@ -1515,6 +1777,17 @@ function spt_layout_apply_to_docx($docxPath, array $settings)
         // Semua sel tabel (biodata pegawai, dasar, lampiran) rata atas agar
         // titik dua dan nomor urut tetap sejajar di baris pertama.
         spt_layout_align_tables_top($document);
+
+        // Template berbasis tabel: jarak blok Dasar/Pegawai/Untuk diatur per
+        // baris agar label dan isi pada baris yang sama bergeser bersama.
+        spt_layout_apply_table_row_blocks($document, $paragraphs, [
+            'dasar' => $idxDasar,
+            'dasar_end' => $endDasar ?? null,
+            'kepada' => $idxKepada,
+            'pegawai_end' => $endPegawai ?? null,
+            'untuk' => $idxUntuk,
+            'untuk_end' => $endUntuk ?? null,
+        ], $settings);
 
         $styles = $stylesXml !== false ? spt_layout_load_dom($stylesXml) : null;
         if ($styles) {
