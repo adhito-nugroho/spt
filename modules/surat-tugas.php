@@ -246,12 +246,14 @@ if ($filter_tipe !== '') {
     $where_clauses[] = "st.tipe_surat = :tipe";
     $query_params[':tipe'] = $filter_tipe;
 }
+// Filter berdasarkan tanggal pelaksanaan (periode tugas), bukan tanggal surat.
+// Surat ditampilkan jika masa pelaksanaannya beririsan dengan rentang filter.
 if ($filter_from !== '' && preg_match('/^\d{4}-\d{2}-\d{2}$/', $filter_from)) {
-    $where_clauses[] = "st.tanggal_surat >= :tanggal_from";
+    $where_clauses[] = "st.tanggal_selesai >= :tanggal_from";
     $query_params[':tanggal_from'] = $filter_from;
 }
 if ($filter_to !== '' && preg_match('/^\d{4}-\d{2}-\d{2}$/', $filter_to)) {
-    $where_clauses[] = "st.tanggal_surat <= :tanggal_to";
+    $where_clauses[] = "st.tanggal_mulai <= :tanggal_to";
     $query_params[':tanggal_to'] = $filter_to;
 }
 
@@ -820,14 +822,14 @@ include '../includes/header.php';
                     </select>
                 </div>
                 <div class="flex flex-col gap-1">
-                    <label for="filterDateFrom" class="text-xs font-medium text-slate-500">Dari:</label>
-                    <input type="date" name="from" id="filterDateFrom" value="<?php echo htmlspecialchars($filter_from); ?>" class="text-sm border border-slate-300 rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none">
+                    <label for="filterDateFrom" class="text-xs font-medium text-slate-500">Pelaksanaan dari:</label>
+                    <input type="date" name="from" id="filterDateFrom" value="<?php echo htmlspecialchars($filter_from); ?>" title="Tanggal pelaksanaan (mulai)" class="text-sm border border-slate-300 rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none">
                 </div>
                 <div class="flex flex-col gap-1">
-                    <label for="filterDateTo" class="text-xs font-medium text-slate-500">Sampai:</label>
-                    <input type="date" name="to" id="filterDateTo" value="<?php echo htmlspecialchars($filter_to); ?>" class="text-sm border border-slate-300 rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none">
+                    <label for="filterDateTo" class="text-xs font-medium text-slate-500">s/d:</label>
+                    <input type="date" name="to" id="filterDateTo" value="<?php echo htmlspecialchars($filter_to); ?>" title="Tanggal pelaksanaan (selesai)" class="text-sm border border-slate-300 rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none">
                 </div>
-                <button type="button" id="btnResetFilter" class="inline-flex items-center gap-1.5 text-sm font-medium px-4 py-1.5 border border-slate-300 text-slate-600 rounded-lg hover:bg-slate-50 hover:border-slate-400 transition-colors" title="Hapus semua filter tanggal, tipe, dan pencarian">
+                <button type="button" id="btnResetFilter" class="inline-flex items-center gap-1.5 text-sm font-medium px-4 py-1.5 border border-slate-300 text-slate-600 rounded-lg hover:bg-slate-50 hover:border-slate-400 transition-colors" title="Hapus semua filter (pelaksanaan, tipe, pencarian)">
                     <i class='bx bx-reset text-base'></i> Reset
                 </button>
                 <?php if ($has_active_filter): ?>
