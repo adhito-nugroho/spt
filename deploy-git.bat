@@ -64,18 +64,27 @@ if errorlevel 1 (
 
 echo Push berhasil!
 
-:: 2. Git Sync di Server via SSH (Fetch & Reset Hard)
+:: 2. Git Sync di Server via SSH (bersihkan lock, Fetch & Reset Hard)
 echo.
 echo [2/3] Mengunduh dan menimpa update ke server...
 echo *(Jika diminta password SSH, masukkan password akun server)*
 echo.
 
 set "REPO_URL=https://github.com/adhito-nugroho/spt.git"
-ssh -p %SERVER_PORT% %SERVER_USER%@%SERVER_IP% "%REMOTE_GIT% config --global --add safe.directory %REMOTE_DIR:\=/% && cd /d %REMOTE_DIR% && (%REMOTE_GIT% remote add origin %REPO_URL% 2>nul || %REMOTE_GIT% remote set-url origin %REPO_URL%) && %REMOTE_GIT% fetch origin %BRANCH% && %REMOTE_GIT% reset --hard origin/%BRANCH%"
+
+:: Sebelum reset, bersihkan hal yang membuat unlink .docx gagal:
+:: - hentikan Word (sisa konversi PDF) yang mengunci file template
+:: - beri jeda singkat agar handle file dilepas Windows
+:: - hapus atribut read-only/system/hidden pada template
+:: - hapus file owner Word (~$*.docx) dan sisa lock git
+:: - 'ver >nul' di akhir memastikan blok cleanup selalu dianggap sukses
+ssh -p %SERVER_PORT% %SERVER_USER%@%SERVER_IP% "%REMOTE_GIT% config --global --add safe.directory %REMOTE_DIR:\=/% && cd /d %REMOTE_DIR% && (taskkill /F /T /IM WINWORD.EXE >nul 2>&1 & ping -n 3 127.0.0.1 >nul & attrib -R -S -H assets\templates\*.* /S >nul 2>&1 & del /F /Q /AH assets\templates\~$*.docx >nul 2>&1 & del /F /Q .git\index.lock >nul 2>&1 & ver >nul) && (%REMOTE_GIT% remote add origin %REPO_URL% 2>nul || %REMOTE_GIT% remote set-url origin %REPO_URL%) && %REMOTE_GIT% fetch origin %BRANCH% && %REMOTE_GIT% reset --hard origin/%BRANCH% < nul"
 
 if errorlevel 1 (
     echo.
     echo [ERROR] Git Pull di server gagal.
+    echo Kemungkinan file template masih dikunci proses lain (Word/PHP/web server).
+    echo Restart server terlebih dahulu, lalu jalankan deploy ini lagi.
     pause
     exit /b 1
 )
