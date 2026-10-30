@@ -64,30 +64,30 @@ if errorlevel 1 (
 
 echo Push berhasil!
 
-:: 2. Git Sync di Server via SSH (bersihkan lock, Fetch & Reset Hard)
+:: 2. Deploy kode ke server via SSH.
+:: assets\templates SENGAJA tidak disentuh agar file template yang sedang
+:: dipakai/di-upload di server tidak perlu dihapus. Hanya path kode di bawah
+:: yang di-checkout dari origin.
 echo.
-echo [2/3] Mengunduh dan menimpa update ke server...
+echo [2/3] Mengunduh dan menimpa update kode ke server...
 echo *(Jika diminta password SSH, masukkan password akun server)*
 echo.
-echo CATATAN: Word di server akan ditutup otomatis agar file template tidak terkunci.
+echo CATATAN: File template di assets\templates tidak akan diubah.
 echo.
 
 set "REPO_URL=https://github.com/adhito-nugroho/spt.git"
 
-:: Sebelum reset, bersihkan hal yang membuat unlink .docx gagal.
-:: PATH SSH di server tidak selalu memuat System32, jadi taskkill/attrib
-:: dipanggil dengan path lengkap (%SystemRoot% di-escape agar dieksekusi di server).
-:: - hentikan Word yang mengunci file template
-:: - hapus atribut read-only/system/hidden pada template
-:: - hapus sisa lock git
-:: - 'ver >nul' di akhir memastikan blok cleanup selalu dianggap sukses
-ssh -p %SERVER_PORT% %SERVER_USER%@%SERVER_IP% "%REMOTE_GIT% config --global --add safe.directory %REMOTE_DIR:\=/% && cd /d %REMOTE_DIR% && (%%SystemRoot%%\System32\taskkill.exe /F /T /IM WINWORD.EXE >nul 2>nul & %%SystemRoot%%\System32\attrib.exe -R -S -H assets\templates\*.* /S >nul 2>nul & %%SystemRoot%%\System32\attrib.exe -R -S -H .git\index >nul 2>nul & del /F /Q .git\index.lock >nul 2>nul & ver >nul) && (%REMOTE_GIT% remote add origin %REPO_URL% 2>nul || %REMOTE_GIT% remote set-url origin %REPO_URL%) && %REMOTE_GIT% fetch origin %BRANCH% && %REMOTE_GIT% reset --hard origin/%BRANCH% < nul"
+:: Path kode/aset yang di-deploy (assets/templates tidak termasuk).
+set "DEPLOY_PATHS=modules includes config database docs migrations sql tests .commandcode assets/css assets/img assets/vendor index.php migrate.php composer.json composer.lock package.json package-lock.json tailwind.config.js deploy-git.bat deploy-db.bat setup-server.bat .env.example .gitignore"
+
+:: Hapus index.lock, fetch, lalu checkout hanya path kode dari origin.
+:: Template yang terkunci Word tidak pernah disentuh, jadi deploy tidak gagal.
+ssh -p %SERVER_PORT% %SERVER_USER%@%SERVER_IP% "%REMOTE_GIT% config --global --add safe.directory %REMOTE_DIR:\=/% && %%SystemRoot%%\System32\attrib.exe -R -S -H %REMOTE_DIR%\.git\index >nul 2>nul & del /F /Q %REMOTE_DIR%\.git\index.lock >nul 2>nul & %REMOTE_GIT% -C %REMOTE_DIR% fetch origin %BRANCH% && %REMOTE_GIT% -C %REMOTE_DIR% read-tree HEAD && %REMOTE_GIT% -C %REMOTE_DIR% checkout origin/%BRANCH% -- %DEPLOY_PATHS% && %REMOTE_GIT% -C %REMOTE_DIR% update-ref refs/heads/%BRANCH% origin/%BRANCH%"
 
 if errorlevel 1 (
     echo.
-    echo [ERROR] Git Pull di server gagal.
-    echo Kemungkinan file template masih dikunci proses lain (Word/PHP/web server).
-    echo Restart server terlebih dahulu, lalu jalankan deploy ini lagi.
+    echo [ERROR] Deploy kode di server gagal.
+    echo Periksa pesan error di atas (mis. .git\index rusak atau file kode terkunci).
     pause
     exit /b 1
 )

@@ -28,5 +28,9 @@ Thumbs.db
 # === Upload user (optional, uncomment jika ada folder uploads) ===
 # /uploads/
 
+# === Template Word (runtime, di-upload lewat aplikasi) ===
+# File template tidak ikut di-commit/di-deploy; deploy hanya meng-update kode.
+/assets/templates/
+
 # === Composer (lock file tetap di-track) ===
 # composer.lock  <-- tetap di track agar deploy konsisten
