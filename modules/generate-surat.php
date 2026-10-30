@@ -2931,8 +2931,11 @@ try {
     $template_content_fallback = false;
     if ($template_found && $jumlah_pegawai > 1 && !spt_template_supports_count($template_path, $jumlah_pegawai)) {
         try {
-            $stmt_cand = $pdo->prepare("SELECT id, nama_file, nama, kategori_template, tipe_surat, berlaku_mulai FROM templates WHERE tipe_surat = ? AND (berlaku_mulai IS NULL OR berlaku_mulai <= ?) ORDER BY is_default DESC, berlaku_mulai IS NULL ASC, berlaku_mulai DESC, created_at DESC");
-            $stmt_cand->execute([$tipe_surat, $tgl_surat_key]);
+            // Prioritas: kategori yang diminta -> kategori 1/2/3 pegawai lain
+            // -> banyak pegawai. Dengan begitu surat 1-3 pegawai tetap memakai
+            // template satu halaman (bukan format banyak pegawai/lampiran).
+            $stmt_cand = $pdo->prepare("SELECT id, nama_file, nama, kategori_template, tipe_surat, berlaku_mulai FROM templates WHERE tipe_surat = ? AND (berlaku_mulai IS NULL OR berlaku_mulai <= ?) ORDER BY CASE WHEN kategori_template = ? THEN 0 WHEN kategori_template = 'banyak_pegawai' THEN 2 ELSE 1 END, is_default DESC, berlaku_mulai IS NULL ASC, berlaku_mulai DESC, created_at DESC");
+            $stmt_cand->execute([$tipe_surat, $tgl_surat_key, $kategori_template]);
             foreach ($stmt_cand->fetchAll() as $cand) {
                 $cand_path = __DIR__ . '/../assets/templates/' . $cand['nama_file'];
                 if (spt_template_supports_count($cand_path, $jumlah_pegawai)) {
