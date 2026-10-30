@@ -389,6 +389,10 @@ function spt_le_detect_roles(array $units)
         }
         $text = $units[$i]['text'];
         $sub = spt_le_ttd_sub($text);
+        if ($sub === 'spacer' && spt_le_unit_has_image($units[$i])) {
+            // Baris gambar tanda tangan/stempel: jangan diperlakukan sebagai ruang kosong.
+            $sub = 'signature';
+        }
         if ($sub === 'name') {
             if ($seenName) {
                 $sub = 'other';
@@ -438,6 +442,13 @@ function spt_le_row_zero_paragraph_spacing(DOMElement $row, DOMDocument $doc)
     }
 }
 
+function spt_le_paragraph_has_image(DOMElement $paragraph)
+{
+    $ns = spt_le_ns();
+    return $paragraph->getElementsByTagNameNS($ns, 'drawing')->length > 0
+        || $paragraph->getElementsByTagNameNS($ns, 'pict')->length > 0;
+}
+
 function spt_le_paragraph_is_blank(DOMElement $paragraph)
 {
     $ns = spt_le_ns();
@@ -446,15 +457,22 @@ function spt_le_paragraph_is_blank(DOMElement $paragraph)
             return false;
         }
     }
-    if ($paragraph->getElementsByTagNameNS($ns, 'drawing')->length > 0
-        || $paragraph->getElementsByTagNameNS($ns, 'pict')->length > 0) {
-        return false;
-    }
-    return true;
+    return !spt_le_paragraph_has_image($paragraph);
+}
+
+function spt_le_unit_has_image(array $unit)
+{
+    $ns = spt_le_ns();
+    $node = $unit['node'];
+    return $node->getElementsByTagNameNS($ns, 'drawing')->length > 0
+        || $node->getElementsByTagNameNS($ns, 'pict')->length > 0;
 }
 
 function spt_le_collapse_paragraph(DOMElement $paragraph, DOMDocument $doc)
 {
+    if (spt_le_paragraph_has_image($paragraph)) {
+        return;
+    }
     $ns = spt_le_ns();
     $spacing = spt_le_spacing($paragraph, $doc);
     $spacing->setAttributeNS($ns, 'w:before', '0');
@@ -868,6 +886,12 @@ function spt_le_apply_ttd(array $units, array $roles, DOMDocument $doc, array $s
     foreach ($items as $i) {
         $unit = $units[$i];
         $sub = $roles[$i]['sub'];
+        if ($sub === 'signature') {
+            // Tinggi baris mengikuti gambar; jangan diciutkan atau diberi line exact.
+            spt_le_unit_set_margins($unit, $doc, 0, 0);
+            $spacerUsed = true;
+            continue;
+        }
         if ($sub === 'spacer') {
             if (!$spacerUsed) {
                 spt_le_unit_reserve_space($unit, $doc, $spaceTwips);
