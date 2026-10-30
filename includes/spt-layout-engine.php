@@ -37,6 +37,34 @@ function &spt_le_anchor_paragraphs()
     return $list;
 }
 
+/**
+ * Anchor gambar stempel (bukan garis kop datar). Garis kop memakai anchor
+ * dengan tinggi nol, jadi hanya anchor yang punya tinggi berarti atau blip
+ * yang dianggap stempel.
+ */
+function spt_le_has_stamp_anchor(DOMElement $node)
+{
+    $wpNs = spt_le_wp_ns();
+    $aNs = 'http://schemas.openxmlformats.org/drawingml/2006/main';
+    foreach ($node->getElementsByTagNameNS($wpNs, 'anchor') as $anchor) {
+        $extent = null;
+        foreach ($anchor->childNodes as $child) {
+            if ($child instanceof DOMElement && $child->localName === 'extent') {
+                $extent = $child;
+                break;
+            }
+        }
+        $cy = $extent ? (int)$extent->getAttribute('cy') : 0;
+        if ($cy > 100000) {
+            return true;
+        }
+        if ($anchor->getElementsByTagNameNS($aNs, 'blip')->length > 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
 function spt_le_load_dom($xml)
 {
     if (!is_string($xml) || $xml === '') {
@@ -341,6 +369,28 @@ function spt_le_detect_roles(array $units)
         ? spt_le_first_match($units, $ttd + 1, '/Lampiran\s+(?:Surat\s+)?Tugas/iu')
         : null;
 
+    // Blok TTD berhenti di baris NIP. Tanpa batas ini, paragraf kosong
+    // "page break" sebelum lampiran ikut dianggap spacer TTD dan judul
+    // lampiran bisa tertarik ke halaman surat.
+    $ttdEnd = $ttd !== null ? (($lampiran ?? $count) - 1) : null;
+    if ($ttd !== null) {
+        $nonEmpty = 0;
+        for ($i = $ttd; $i < $count; $i++) {
+            if ($lampiran !== null && $i >= $lampiran) {
+                $ttdEnd = $i - 1;
+                break;
+            }
+            if ($units[$i]['text'] === '') {
+                continue;
+            }
+            $nonEmpty++;
+            $ttdEnd = $i;
+            if (preg_match('/\bNIP\b/iu', $units[$i]['text']) || $nonEmpty >= 7) {
+                break;
+            }
+        }
+    }
+
     $ranges = [
         ['kop', 0, ($judul ?? $count) - 1],
         ['judul', $judul, ($nomor ?? ($judul === null ? -1 : $judul + 1)) - 1],
@@ -349,7 +399,7 @@ function spt_le_detect_roles(array $units)
         ['memerintahkan', $mem, ($kepada ?? ($mem === null ? -1 : $mem + 1)) - 1],
         ['pegawai', $kepada, ($untuk ?? ($kepada === null ? -1 : $kepada + 1)) - 1],
         ['untuk', $untuk, ($ttd ?? ($untuk === null ? -1 : $untuk + 1)) - 1],
-        ['ttd', $ttd, ($lampiran ?? $count) - 1],
+        ['ttd', $ttd, $ttdEnd],
         ['lampiran', $lampiran, $count - 1],
     ];
 
@@ -495,6 +545,34 @@ function spt_le_collapse_paragraph(DOMElement $paragraph, DOMDocument $doc)
     $spacing->setAttributeNS($ns, 'w:after', '0');
     $spacing->setAttributeNS($ns, 'w:line', '20');
     $spacing->setAttributeNS($ns, 'w:lineRule', 'exact');
+    if (!spt_le_paragraph_is_blank($paragraph)) {
+        return;
+    }
+    // Tanda paragraf 1pt: tanpa ini Word tetap memakai tinggi font asli untuk
+    // baris kosong meski w:line sudah 20 twips.
+    $pPr = spt_le_pPr($paragraph, $doc);
+    $rPr = spt_le_child($pPr, 'rPr');
+    if (!$rPr) {
+        $rPr = spt_le_el($doc, 'rPr');
+        spt_le_insert_ordered($pPr, $rPr, [
+            'pStyle', 'keepNext', 'keepLines', 'pageBreakBefore', 'framePr',
+            'widowControl', 'numPr', 'suppressLineNumbers', 'pBdr', 'shd',
+            'tabs', 'suppressAutoHyphens', 'kinsoku', 'wordWrap',
+            'overflowPunct', 'topLinePunct', 'autoSpaceDE', 'autoSpaceDN',
+            'bidi', 'adjustRightInd', 'snapToGrid', 'spacing', 'ind',
+            'contextualSpacing', 'mirrorIndents', 'suppressOverlap', 'jc',
+            'textDirection', 'textAlignment', 'textboxTightWrap',
+            'outlineLvl', 'divId', 'cnfStyle', 'rPr', 'sectPr', 'pPrChange',
+        ]);
+    }
+    foreach (['sz', 'szCs'] as $tag) {
+        $size = spt_le_child($rPr, $tag);
+        if (!$size) {
+            $size = spt_le_el($doc, $tag);
+            $rPr->appendChild($size);
+        }
+        $size->setAttributeNS($ns, 'w:val', '2');
+    }
 }
 
 function spt_le_row_set_margins(DOMElement $row, DOMDocument $doc, $topTwips = null, $bottomTwips = null)
@@ -520,10 +598,8 @@ function spt_le_row_set_margins(DOMElement $row, DOMDocument $doc, $topTwips = n
                 $cell->appendChild($tcPr);
             }
         }
-        $vMerge = spt_le_child($tcPr, 'vMerge');
-        if ($vMerge && !$vMerge->hasAttributeNS($ns, 'val')) {
-            continue;
-        }
+        // Sel lanjutan vMerge juga perlu tcMar agar padding bawah baris
+        // benar-benar diterapkan Word pada seluruh tinggi gabungan sel.
         $margins = spt_le_child($tcPr, 'tcMar');
         if (!$margins) {
             $margins = spt_le_el($doc, 'tcMar');
@@ -570,11 +646,22 @@ function spt_le_row_ensure_height(DOMElement $row, DOMDocument $doc, $twips, $ru
     $height->setAttributeNS($ns, 'w:hRule', $rule);
 }
 
-function spt_le_unit_set_margins(array $unit, DOMDocument $doc, $topTwips = null, $bottomTwips = null)
+function spt_le_unit_set_margins(array $unit, DOMDocument $doc, $topTwips = null, $bottomTwips = null, $preserveHeight = false)
 {
     if ($unit['kind'] === 'row') {
         spt_le_row_zero_paragraph_spacing($unit['node'], $doc);
         spt_le_row_set_margins($unit['node'], $doc, $topTwips, $bottomTwips);
+        if (!$preserveHeight) {
+            // trHeight yang diwarisi template menahan penyusutan baris;
+            // biarkan teks + tcMar yang menentukan tinggi baris.
+            $trPr = spt_le_child($unit['node'], 'trPr');
+            if ($trPr) {
+                $height = spt_le_child($trPr, 'trHeight');
+                if ($height) {
+                    $trPr->removeChild($height);
+                }
+            }
+        }
         return;
     }
     $ns = spt_le_ns();
@@ -596,6 +683,7 @@ function spt_le_unit_collapse(array $unit, DOMDocument $doc)
             spt_le_collapse_paragraph($paragraph, $doc);
         }
         spt_le_row_set_margins($unit['node'], $doc, 0, 0);
+        spt_le_row_ensure_height($unit['node'], $doc, 20, 'exact');
         return;
     }
     spt_le_collapse_paragraph($unit['node'], $doc);
@@ -686,12 +774,10 @@ function spt_le_dominant_line(array $units)
             if (!$spacing || !$spacing->hasAttributeNS(spt_le_ns(), 'line')) {
                 continue;
             }
-            $rule = $spacing->getAttributeNS(spt_le_ns(), 'lineRule');
-            if ($rule === 'exact') {
-                continue;
-            }
             $value = (int)$spacing->getAttributeNS(spt_le_ns(), 'line');
-            if ($value >= 200) {
+            // Nilai exact di bawah 180 adalah paragraf yang sengaja
+            // diciutkan (1pt), bukan spasi baris isi surat.
+            if ($value >= 180) {
                 $counts[$value] = ($counts[$value] ?? 0) + 1;
             }
         }
@@ -720,39 +806,50 @@ function spt_le_scale_font_sizes(DOMDocument $doc, $factor)
     }
 }
 
-function spt_le_apply_line_height(array $units, DOMDocument $doc, $baseLine, $targetHeight)
+function spt_le_apply_line_height(array $units, DOMDocument $doc, $baseLine, $targetHeight, array $exclude = [])
 {
-    if ($baseLine <= 0 || abs($targetHeight - ($baseLine / 240)) < 0.0001) {
+    if ($targetHeight <= 0) {
         return;
     }
     $ns = spt_le_ns();
-    $ratio = $targetHeight / max(0.1, $baseLine / 240);
     $targetTwips = (int)round($targetHeight * 240);
+    $ratio = $baseLine > 0 ? ($targetTwips / $baseLine) : 1.0;
 
-    foreach ($units as $unit) {
+    foreach ($units as $index => $unit) {
+        if (isset($exclude[$index])) {
+            continue;
+        }
         $paragraphs = $unit['kind'] === 'row'
             ? $unit['node']->getElementsByTagNameNS($ns, 'p')
             : [$unit['node']];
         foreach ($paragraphs as $paragraph) {
             $spacing = spt_le_spacing($paragraph, $doc);
-            if ($spacing->hasAttributeNS($ns, 'line')) {
-                $rule = $spacing->getAttributeNS($ns, 'lineRule');
-                if ($rule === 'exact') {
-                    continue;
-                }
-                $current = (int)$spacing->getAttributeNS($ns, 'line');
-                if ($current > 0) {
-                    $spacing->setAttributeNS($ns, 'w:line', (string)max(20, (int)round($current * $ratio)));
-                } else {
-                    $spacing->setAttributeNS($ns, 'w:line', (string)$targetTwips);
-                }
+            $hasLine = $spacing->hasAttributeNS($ns, 'line');
+            $rule = $hasLine ? $spacing->getAttributeNS($ns, 'lineRule') : '';
+            $current = $hasLine ? (int)$spacing->getAttributeNS($ns, 'line') : 0;
+            if (spt_le_paragraph_is_blank($paragraph)
+                && $rule === 'exact'
+                && $current <= 40) {
+                // Sudah diciutkan menjadi 1pt.
+                continue;
+            }
+            if ($rule === 'exact') {
+                // Template PAPBD mengunci spasi baris dengan lineRule exact.
+                // Ubah ke auto agar slider line_height dan kompresi fit
+                // benar-benar mengubah jarak baris isi surat.
+                $spacing->setAttributeNS($ns, 'w:line', (string)$targetTwips);
+                $spacing->setAttributeNS($ns, 'w:lineRule', 'auto');
+                continue;
+            }
+            if ($hasLine && $current > 0) {
+                $spacing->setAttributeNS($ns, 'w:line', (string)max(20, (int)round($current * $ratio)));
                 if (!$spacing->hasAttributeNS($ns, 'lineRule')) {
                     $spacing->setAttributeNS($ns, 'w:lineRule', 'auto');
                 }
-            } else {
-                $spacing->setAttributeNS($ns, 'w:line', (string)$targetTwips);
-                $spacing->setAttributeNS($ns, 'w:lineRule', 'auto');
+                continue;
             }
+            $spacing->setAttributeNS($ns, 'w:line', (string)$targetTwips);
+            $spacing->setAttributeNS($ns, 'w:lineRule', 'auto');
         }
     }
 }
@@ -786,7 +883,7 @@ function spt_le_set_page_margins(DOMDocument $doc, array $settings)
     }
 }
 
-function spt_le_align_tables_top(DOMDocument $doc)
+function spt_le_align_tables_top(DOMDocument $doc, array $units = [], array $roles = [])
 {
     $ns = spt_le_ns();
     $xpath = new DOMXPath($doc);
@@ -796,6 +893,15 @@ function spt_le_align_tables_top(DOMDocument $doc)
         'noWrap', 'tcMar', 'textDirection', 'tcFitText', 'vAlign', 'hideMark',
         'headers', 'cellIns', 'cellDel', 'cellMerge', 'tcPrChange',
     ];
+    $rowRoles = [];
+    foreach ($units as $i => $unit) {
+        if ($unit['kind'] === 'row') {
+            $rowRoles[spl_object_id($unit['node'])] = [
+                'role' => $roles[$i]['role'] ?? '',
+                'sub' => $roles[$i]['sub'] ?? '',
+            ];
+        }
+    }
     foreach ($xpath->query('//w:tbl//w:tc') as $cell) {
         $tcPr = spt_le_child($cell, 'tcPr');
         if (!$tcPr) {
@@ -814,7 +920,31 @@ function spt_le_align_tables_top(DOMDocument $doc)
         $vAlign->setAttributeNS($ns, 'w:val', 'top');
     }
     foreach ($xpath->query('//w:tbl//w:tr/w:trPr/w:trHeight') as $rowHeight) {
-        $rowHeight->setAttributeNS($ns, 'w:hRule', 'atLeast');
+        $tr = $rowHeight->parentNode ? $rowHeight->parentNode->parentNode : null;
+        $info = $tr instanceof DOMElement
+            ? ($rowRoles[spl_object_id($tr)] ?? null)
+            : null;
+        $val = (int)$rowHeight->getAttributeNS($ns, 'val');
+        $rule = $rowHeight->getAttributeNS($ns, 'hRule');
+        if ($rule === 'exact' && $val > 0 && $val <= 40) {
+            // Baris kosong yang sudah diciutkan ke 1pt.
+            continue;
+        }
+        if ($val > 40) {
+            if ($rule === 'exact') {
+                $rowHeight->setAttributeNS($ns, 'w:hRule', 'atLeast');
+            }
+            $isKop = $info !== null && $info['role'] === 'kop';
+            $isTtdSpacer = $info !== null && $info['role'] === 'ttd' && $info['sub'] === 'spacer';
+            if (!$isKop && !$isTtdSpacer) {
+                // Tinggi baris tidak boleh menahan penyusutan jarak.
+                $rowHeight->setAttributeNS($ns, 'w:val', '0');
+            }
+            continue;
+        }
+        if ($rule !== 'exact') {
+            $rowHeight->setAttributeNS($ns, 'w:hRule', 'atLeast');
+        }
     }
 }
 
@@ -1011,7 +1141,7 @@ function spt_le_apply_ttd(array $units, array $roles, DOMDocument $doc, array $s
                 : [$unit['node']];
             foreach ($paragraphs as $paragraph) {
                 spt_le_add_keep_flag($paragraph, 'keepLines', $doc);
-                if ($position < $count - 1) {
+                if ($position < $count - 1 && $roles[$i]['sub'] !== 'nip') {
                     spt_le_add_keep_flag($paragraph, 'keepNext', $doc);
                 }
             }
@@ -1058,6 +1188,64 @@ function spt_le_set_table_alignment(DOMElement $table, DOMDocument $doc, $value)
 }
 
 /**
+ * Jadikan halaman lampiran selalu mulai di halaman baru. Template lama
+ * memakai deretan paragraf kosong sebagai "page break"; paragraf itu ikut
+ * terhitung sebagai spacer TTD sehingga lampiran bisa tertarik ke halaman 1.
+ */
+function spt_le_isolate_lampiran(DOMDocument $doc)
+{
+    $body = null;
+    $root = $doc->documentElement;
+    if ($root) {
+        if ($root->localName === 'body') {
+            $body = $root;
+        } else {
+            foreach ($root->childNodes as $child) {
+                if ($child instanceof DOMElement && $child->localName === 'body') {
+                    $body = $child;
+                    break;
+                }
+            }
+        }
+    }
+    if (!$body) {
+        return;
+    }
+    $lampiran = null;
+    foreach ($body->childNodes as $child) {
+        if ($child instanceof DOMElement
+            && $child->localName === 'p'
+            && preg_match('/^\s*Lampiran\s+(?:Surat\s+)?Tugas/iu', spt_le_unit_text($child))) {
+            $lampiran = $child;
+            break;
+        }
+    }
+    if (!$lampiran) {
+        return;
+    }
+    spt_le_add_keep_flag($lampiran, 'pageBreakBefore', $doc);
+
+    $node = $lampiran->previousSibling;
+    while ($node !== null) {
+        $previous = $node->previousSibling;
+        if ($node instanceof DOMElement) {
+            if ($node->localName !== 'p') {
+                break;
+            }
+            if (trim(spt_le_unit_text($node)) !== '' || spt_le_paragraph_has_image($node)) {
+                break;
+            }
+            $body->removeChild($node);
+        } elseif ($node->nodeType === XML_TEXT_NODE && trim((string)$node->nodeValue) === '') {
+            $body->removeChild($node);
+        } else {
+            break;
+        }
+        $node = $previous;
+    }
+}
+
+/**
  * Rapikan struktur dokumen sebelum pengaturan jarak diterapkan:
  *  - Tabel tanda tangan yang mengambang (tblpPr) dijadikan tabel inline
  *    rata kanan. Tabel mengambang dengan offset negatif menabrak tabel isi
@@ -1088,22 +1276,42 @@ function spt_le_prepare_document(DOMDocument $doc)
         // kosong bergambar anchor sesudahnya duduk di awal blok. Begitu tabel
         // dijadikan inline paragraf itu terdorong ke bawah tabel dan gambar
         // (mis. stempel) ikut turun. Pindahkan ke sebelum tabel agar posisinya
-        // tetap relatif ke awal blok tanda tangan.
+        // tetap relatif ke awal blok tanda tangan. Beberapa template menyisipkan
+        // paragraf kosong tanpa anchor sebelum paragraf stempel, jadi pindai
+        // beberapa paragraf kosong ke depan.
         $node = $table->nextSibling;
-        while ($node !== null && $node->nodeType === XML_TEXT_NODE && trim((string)$node->nodeValue) === '') {
-            $node = $node->nextSibling;
-        }
-        while ($node instanceof DOMElement && $node->nodeName === 'w:p') {
-            $hasAnchor = $node->getElementsByTagNameNS(spt_le_wp_ns(), 'anchor')->length > 0;
-            if (!$hasAnchor || trim(spt_le_unit_text($node)) !== '') {
+        $emptySeen = 0;
+        while ($node !== null && $emptySeen <= 4) {
+            if ($node->nodeType === XML_TEXT_NODE) {
+                if (trim((string)$node->nodeValue) === '') {
+                    $node = $node->nextSibling;
+                    continue;
+                }
                 break;
             }
-            $next = $node->nextSibling;
-            $table->parentNode->insertBefore($node, $table);
-            $anchorParagraphs[] = $node;
-            $node = $next;
+            if (!($node instanceof DOMElement) || $node->nodeName !== 'w:p') {
+                break;
+            }
+            if (trim(spt_le_unit_text($node)) !== '') {
+                break;
+            }
+            if (spt_le_has_stamp_anchor($node)) {
+                $next = $node->nextSibling;
+                $table->parentNode->insertBefore($node, $table);
+                $anchorParagraphs[] = $node;
+                $node = $next;
+                continue;
+            }
+            if (spt_le_paragraph_has_image($node)) {
+                // Gambar lain (bukan stempel) bukan milik blok TTD.
+                break;
+            }
+            $emptySeen++;
+            $node = $node->nextSibling;
         }
     }
+
+    spt_le_isolate_lampiran($doc);
 
     foreach (iterator_to_array($xpath->query('//w:lastRenderedPageBreak')) as $marker) {
         if ($marker->parentNode) {
@@ -1196,9 +1404,19 @@ function spt_le_apply(DOMDocument $doc, array $settings)
 
     $baseLine = spt_le_dominant_line($units);
 
+    // Blok yang punya pengaturan jarak sendiri tidak ikut normalisasi baris:
+    // kop (kop_line_spacing), judul/nomor (exact heading), TTD (ttd_*),
+    // dan lampiran (tidak dimampatkan).
+    $lineExclude = [];
+    foreach ($roles as $i => $info) {
+        if (in_array($info['role'], ['kop', 'judul', 'nomor', 'ttd', 'lampiran'], true)) {
+            $lineExclude[$i] = true;
+        }
+    }
+
     spt_le_set_page_margins($doc, $settings);
     spt_le_scale_font_sizes($doc, $factor);
-    spt_le_apply_line_height($units, $doc, $baseLine, (float)($settings['line_height'] ?? 1.0));
+    spt_le_apply_line_height($units, $doc, $baseLine, (float)($settings['line_height'] ?? 1.0), $lineExclude);
 
     // Kop: kerapatan baris + jarak bawah.
     $kopLineTwips = spt_le_px_to_twips($settings['kop_line_spacing'] ?? 0);
@@ -1217,7 +1435,7 @@ function spt_le_apply(DOMDocument $doc, array $settings)
     }
     if (!empty($kopContent)) {
         $last = $kopContent[count($kopContent) - 1];
-        spt_le_unit_set_margins($units[$last], $doc, null, $kopBottomTwips);
+        spt_le_unit_set_margins($units[$last], $doc, null, $kopBottomTwips, true);
     }
 
     // Judul & nomor.
@@ -1311,7 +1529,7 @@ function spt_le_apply(DOMDocument $doc, array $settings)
     spt_le_apply_ttd($units, $roles, $doc, $settings);
 
     // Lampiran tidak dimampatkan, tetapi sel tabel tetap rata atas.
-    spt_le_align_tables_top($doc);
+    spt_le_align_tables_top($doc, $units, $roles);
     spt_le_settle_anchor_paragraphs($doc);
 
     return [
@@ -1323,6 +1541,53 @@ function spt_le_apply(DOMDocument $doc, array $settings)
         'font_factor' => round($factor, 4),
         'base_font' => $baseHalfPoints / 2,
     ];
+}
+
+/**
+ * Normalisasi spasi warisan style (docDefaults). Template sering menyimpan
+ * w:after=160/200 di sini; tanpa dinetralkan, paragraf yang tidak punya
+ * <w:spacing> sendiri tetap diberi jarak liar.
+ */
+function spt_le_neutralize_styles(DOMDocument $styles)
+{
+    $ns = spt_le_ns();
+    $xpath = new DOMXPath($styles);
+    $xpath->registerNamespace('w', $ns);
+    foreach ($xpath->query('//w:docDefaults//w:pPr//w:spacing') as $spacing) {
+        $spacing->setAttributeNS($ns, 'w:before', '0');
+        $spacing->setAttributeNS($ns, 'w:after', '0');
+    }
+}
+
+/**
+ * Apakah dokumen punya blok "Lampiran Surat Tugas" (halaman lampiran).
+ * Dipakai solver fit untuk menentukan target halaman: 1 tanpa lampiran,
+ * 2 dengan lampiran.
+ */
+function spt_le_docx_has_lampiran($docxPath)
+{
+    if (!class_exists('ZipArchive') || !is_file($docxPath)) {
+        return false;
+    }
+    $zip = new ZipArchive();
+    if ($zip->open($docxPath) !== true) {
+        return false;
+    }
+    $documentXml = $zip->getFromName('word/document.xml');
+    $zip->close();
+    $doc = spt_le_load_dom($documentXml);
+    if (!$doc) {
+        return false;
+    }
+    // Deteksi langsung dari teks: tidak bergantung pada baris tanggal TTD
+    // yang baru terisi setelah placeholder diganti.
+    foreach (spt_le_collect_units($doc) as $unit) {
+        if ($unit['text'] !== ''
+            && preg_match('/^\s*Lampiran\s+(?:Surat\s+)?Tugas/iu', $unit['text'])) {
+            return true;
+        }
+    }
+    return false;
 }
 
 /**
@@ -1351,6 +1616,7 @@ function spt_le_apply_docx($docxPath, array $settings)
         $styles = $stylesXml !== false ? spt_le_load_dom($stylesXml) : null;
         if ($styles) {
             spt_le_scale_font_sizes($styles, (float)($report['font_factor'] ?? 1.0));
+            spt_le_neutralize_styles($styles);
         }
 
         $zip->addFromString('word/document.xml', $doc->saveXML());

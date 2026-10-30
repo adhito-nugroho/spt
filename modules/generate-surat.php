@@ -3835,6 +3835,7 @@ window.dispatchEvent(new Event('spt-pdfjs-ready'));
     let hasSavedDefault = HAS_SAVED_DEFAULT;
     let active = HAS_SAVED_DEFAULT;
     let pageCount = null;
+    let pageTarget = 1;
     let renderMethod = '';
     let currentBlobUrl = null;
     let autoFitTimer = null;
@@ -3981,18 +3982,24 @@ window.dispatchEvent(new Event('spt-pdfjs-ready'));
         status.textContent = 'Kustom aktif — belum disimpan sebagai default';
     }
 
-    function updatePageBadge(count, method, layoutStatus) {
+    function updatePageBadge(count, method, layoutStatus, targetPages) {
         pageCount = (typeof count === 'number' && count > 0) ? count : null;
+        if (typeof targetPages === 'number' && targetPages > 0) {
+            pageTarget = targetPages;
+        }
         if (method) renderMethod = method;
+        const fits = pageCount !== null && pageCount <= pageTarget;
         if (pageBadge) {
             if (pageCount === null) {
                 pageBadge.textContent = 'Jumlah halaman tidak diketahui';
                 pageBadge.className = 'spt-badge spt-badge-neutral';
-            } else if (pageCount === 1) {
-                pageBadge.textContent = '1 Halaman — Ideal';
+            } else if (fits) {
+                pageBadge.textContent = pageTarget === 1
+                    ? '1 Halaman — Ideal'
+                    : pageTarget + ' Halaman — Sesuai (surat + lampiran)';
                 pageBadge.className = 'spt-badge spt-badge-emerald';
             } else {
-                pageBadge.textContent = pageCount + ' Halaman — Belum Muat 1 Halaman';
+                pageBadge.textContent = pageCount + ' Halaman — Belum Muat ' + pageTarget + ' Halaman';
                 pageBadge.className = 'spt-badge spt-badge-amber';
             }
         }
@@ -4000,11 +4007,11 @@ window.dispatchEvent(new Event('spt-pdfjs-ready'));
         if (statusText) {
             statusText.textContent = pageCount === null
                 ? 'Halaman tidak diketahui'
-                : (pageCount === 1 ? 'Halaman — sudah pas' : 'Halaman — belum muat 1');
+                : (fits ? 'Halaman — sudah pas' : 'Halaman — belum muat ' + pageTarget);
         }
         if (statusCard) {
-            statusCard.classList.toggle('is-fit', pageCount === 1);
-            statusCard.classList.toggle('is-over', pageCount !== null && pageCount > 1);
+            statusCard.classList.toggle('is-fit', fits);
+            statusCard.classList.toggle('is-over', pageCount !== null && pageCount > pageTarget);
         }
         if (statusHint) {
             if (layoutStatus === 'failed') {
@@ -4155,7 +4162,8 @@ window.dispatchEvent(new Event('spt-pdfjs-ready'));
                 const contentType = (response.headers.get('content-type') || '').toLowerCase();
                 if (response.ok && contentType.indexOf('application/pdf') !== -1) {
                     const count = parseInt(response.headers.get('X-SPT-Page-Count') || '0', 10);
-                    updatePageBadge(count > 0 ? count : null);
+                    const targetPages = parseInt(response.headers.get('X-SPT-Target-Pages') || '0', 10);
+                    updatePageBadge(count > 0 ? count : null, null, null, targetPages);
                 }
             } catch (e) {
                 // abaikan; badge tetap menampilkan status terakhir
@@ -4259,12 +4267,12 @@ window.dispatchEvent(new Event('spt-pdfjs-ready'));
         updatePageNav();
     }
 
-    async function showPdfBlob(blob, count, method, layoutStatus) {
+    async function showPdfBlob(blob, count, method, layoutStatus, targetPages) {
         if (currentBlobUrl) {
             try { URL.revokeObjectURL(currentBlobUrl); } catch (e) {}
         }
         currentBlobUrl = URL.createObjectURL(blob);
-        updatePageBadge(count > 0 ? count : null, method, layoutStatus);
+        updatePageBadge(count > 0 ? count : null, method, layoutStatus, targetPages);
         const lib = await pdfjsReady();
         if (!lib) {
             setViewerMode(false);
@@ -4356,10 +4364,11 @@ window.dispatchEvent(new Event('spt-pdfjs-ready'));
                 const count = parseInt(response.headers.get('X-SPT-Page-Count') || '0', 10);
                 const method = response.headers.get('X-SPT-Render') || '';
                 const layoutStatus = (response.headers.get('X-SPT-Layout-Status') || '').toLowerCase();
+                const targetPages = parseInt(response.headers.get('X-SPT-Target-Pages') || '0', 10);
                 const blob = await response.blob();
                 if (reqId !== previewRequestSeq) return false;
                 if (blob && blob.size > 0) {
-                    await showPdfBlob(blob, count, method, layoutStatus);
+                    await showPdfBlob(blob, count, method, layoutStatus, targetPages);
                     appliedState = Object.assign({}, state, { lock_ttd: state.lock_ttd ? 1 : 0 });
                     updateDirtyUi();
                     updateAccordionBadges();
@@ -4638,8 +4647,9 @@ window.dispatchEvent(new Event('spt-pdfjs-ready'));
             }
             const count = parseInt(response.headers.get('X-SPT-Page-Count') || '0', 10);
             const method = response.headers.get('X-SPT-Render') || '';
+            const targetPages = parseInt(response.headers.get('X-SPT-Target-Pages') || '0', 10);
             const blob = await response.blob();
-            await showPdfBlob(blob, count, method);
+            await showPdfBlob(blob, count, method, '', targetPages);
             appliedState = Object.assign({}, state, { lock_ttd: state.lock_ttd ? 1 : 0 });
             persistLocal();
             updateHistory();
@@ -4648,11 +4658,12 @@ window.dispatchEvent(new Event('spt-pdfjs-ready'));
             updateAccordionBadges();
             updatePresetState();
             updateStatus();
-            if (count > 1) {
+            const target = targetPages > 0 ? targetPages : 1;
+            if (count > target) {
                 if (window.Swal) {
                     Swal.fire({
                         icon: 'info',
-                        title: 'Belum bisa muat 1 halaman',
+                        title: 'Belum bisa muat ' + target + ' halaman',
                         text: 'Surat tetap ' + count + ' halaman setelah dipadatkan. Kurangi butir tugas/pegawai atau pilih template dengan area isi lebih besar.',
                         confirmButtonColor: '#059669'
                     });
@@ -4924,7 +4935,7 @@ Settings::setTempDir($tempDir);
         if ($fitRequested && $format === 'pdf') {
             require_once dirname(__DIR__) . DIRECTORY_SEPARATOR . 'includes' . DIRECTORY_SEPARATOR . 'spt-render.php';
             set_time_limit(180);
-            $fit_report = spt_render_fit($tempDocx, $layout_settings, 1);
+            $fit_report = spt_render_fit($tempDocx, $layout_settings, null);
             if (!empty($fit_report['docx'])) {
                 $layout_adjusted_docx = $fit_report['docx'];
                 $pdf_source_docx = $layout_adjusted_docx;
@@ -5073,6 +5084,18 @@ Settings::setTempDir($tempDir);
                     );
                 }
 
+                // Target halaman bergantung pada ada/tidaknya lampiran:
+                // 1 halaman naskah, atau 2 halaman (naskah + lampiran).
+                $sptTargetPages = null;
+                if ($fit_report !== null && !empty($fit_report['target_pages'])) {
+                    $sptTargetPages = (int)$fit_report['target_pages'];
+                } else {
+                    require_once dirname(__DIR__) . DIRECTORY_SEPARATOR . 'includes' . DIRECTORY_SEPARATOR . 'spt-layout-engine.php';
+                    if (function_exists('spt_le_docx_has_lampiran')) {
+                        $sptTargetPages = spt_le_docx_has_lampiran($pdf_source_docx) ? 2 : 1;
+                    }
+                }
+
                 @unlink($tempDocx);
                 if ($layout_adjusted_docx) {
                     @unlink($layout_adjusted_docx);
@@ -5090,6 +5113,9 @@ Settings::setTempDir($tempDir);
                 }
                 if ($sptPageCount > 0) {
                     header('X-SPT-Page-Count: ' . $sptPageCount);
+                }
+                if ($sptTargetPages !== null) {
+                    header('X-SPT-Target-Pages: ' . $sptTargetPages);
                 }
                 if ($usedMethod !== '') {
                     header('X-SPT-Render: ' . $usedMethod);

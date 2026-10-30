@@ -239,9 +239,18 @@ function spt_render_libreoffice($docxPath, &$outDir = null, &$error = null)
  *   measured=false berarti Word tidak tersedia sehingga penyusutan tidak bisa
  *   diverifikasi; settings dikembalikan apa adanya.
  */
-function spt_render_fit($templateDocx, array $settings, $targetPages = 1)
+function spt_render_fit($templateDocx, array $settings, $targetPages = null)
 {
     require_once __DIR__ . DIRECTORY_SEPARATOR . 'spt-layout-engine.php';
+
+    $hasLampiran = function_exists('spt_le_docx_has_lampiran')
+        ? spt_le_docx_has_lampiran($templateDocx)
+        : false;
+    if ($targetPages === null) {
+        // Surat berlampiran butuh 1 halaman naskah + 1 halaman lampiran.
+        $targetPages = $hasLampiran ? 2 : 1;
+    }
+    $targetPages = max(1, (int)$targetPages);
 
     $result = [
         'settings' => $settings,
@@ -250,6 +259,8 @@ function spt_render_fit($templateDocx, array $settings, $targetPages = 1)
         'ratio' => 1.0,
         'attempts' => [],
         'measured' => false,
+        'target_pages' => $targetPages,
+        'has_lampiran' => $hasLampiran,
     ];
 
     $workDir = spt_render_tmp_dir() . DIRECTORY_SEPARATOR . 'fit_' . uniqid();
@@ -259,6 +270,7 @@ function spt_render_fit($templateDocx, array $settings, $targetPages = 1)
 
     // Hapus semua percobaan kecuali kandidat yang dikembalikan, agar folder
     // kerja solver tidak menumpuk file DOCX.
+    $files = [];
     $purge = static function ($keep) use (&$files, $workDir) {
         foreach ($files as $file) {
             if ($keep === null || $file !== $keep) {
@@ -271,57 +283,92 @@ function spt_render_fit($templateDocx, array $settings, $targetPages = 1)
     };
 
     $ratios = [1.0, 0.94, 0.88, 0.84, 0.80, 0.76, 0.72];
-    $files = [];
-    $best = null;      // kandidat paling rapat
-    $leastCompressed = null; // kandidat paling longgar dengan halaman tersedikit
-    foreach ($ratios as $ratio) {
+
+    // Bangun + ukur satu kandidat. Return null bila file gagal dibuat.
+    $attempt = function ($index) use (&$files, &$result, $templateDocx, $settings, $ratios, $workDir) {
+        $ratio = $ratios[$index];
         $candidate = $ratio >= 1.0 ? $settings : spt_le_compress($settings, $ratio);
         $file = $workDir . DIRECTORY_SEPARATOR . 'fit_' . str_replace('.', '_', (string)$ratio) . '.docx';
         if (!@copy($templateDocx, $file)) {
-            continue;
+            return null;
         }
         if (!spt_le_apply_docx($file, $candidate)) {
             @unlink($file);
-            continue;
+            return null;
         }
         $files[] = $file;
         $pages = spt_render_measure_pages($file);
-        if ($pages === null) {
-            // Word tidak tersedia: berhenti di percobaan pertama.
-            $result['settings'] = $candidate;
-            $result['docx'] = $file;
-            $result['ratio'] = $ratio;
-            $purge($file);
-            return $result;
+        if ($pages !== null) {
+            $result['measured'] = true;
         }
-        $result['measured'] = true;
         $result['attempts'][] = ['ratio' => $ratio, 'pages' => $pages];
-        $candidateInfo = ['ratio' => $ratio, 'pages' => $pages, 'file' => $file, 'settings' => $candidate];
-        if ($pages <= $targetPages) {
-            $result['settings'] = $candidate;
-            $result['pages'] = $pages;
-            $result['docx'] = $file;
-            $result['ratio'] = $ratio;
-            $purge($file);
-            return $result;
-        }
-        if ($leastCompressed === null || $pages < $leastCompressed['pages']) {
-            $leastCompressed = $candidateInfo;
-        }
-        $best = $candidateInfo;
+        return [
+            'ratio' => $ratio,
+            'pages' => $pages,
+            'file' => $file,
+            'settings' => $candidate,
+        ];
+    };
+
+    $first = $attempt(0);
+    if ($first === null) {
+        $purge(null);
+        return $result;
+    }
+    if ($first['pages'] === null) {
+        // Word tidak tersedia: pakai pengaturan apa adanya.
+        $result['settings'] = $first['settings'];
+        $result['docx'] = $first['file'];
+        $result['ratio'] = $first['ratio'];
+        $purge($first['file']);
+        return $result;
+    }
+    if ($first['pages'] <= $targetPages) {
+        $result['settings'] = $first['settings'];
+        $result['pages'] = $first['pages'];
+        $result['docx'] = $first['file'];
+        $result['ratio'] = $first['ratio'];
+        $purge($first['file']);
+        return $result;
     }
 
-    // Target tidak tercapai: pakai kompresi paling ringan yang menghasilkan
-    // jumlah halaman paling sedikit (bukan yang paling rapat).
-    $fallback = $leastCompressed ?? $best;
-    if ($fallback !== null) {
-        $result['settings'] = $fallback['settings'];
-        $result['pages'] = $fallback['pages'];
-        $result['docx'] = $fallback['file'];
-        $result['ratio'] = $fallback['ratio'];
-        $purge($fallback['file']);
-    } else {
-        $purge(null);
+    // Binary search pada indeks 1..6: cari rasio paling longgar yang muat.
+    // Kandidat paling ringan dengan halaman paling sedikit disimpan sebagai
+    // fallback bila target tidak tercapai.
+    $least = $first;
+    $fit = null;
+    $low = 1;
+    $high = count($ratios) - 1;
+    while ($low <= $high) {
+        $mid = intdiv($low + $high, 2);
+        $candidate = $attempt($mid);
+        if ($candidate === null) {
+            $low = $mid + 1;
+            continue;
+        }
+        if ($candidate['pages'] === null) {
+            $result['settings'] = $candidate['settings'];
+            $result['docx'] = $candidate['file'];
+            $result['ratio'] = $candidate['ratio'];
+            $purge($candidate['file']);
+            return $result;
+        }
+        if ($candidate['pages'] <= $targetPages) {
+            $fit = $candidate;
+            $high = $mid - 1;
+        } else {
+            if ($candidate['pages'] < $least['pages']) {
+                $least = $candidate;
+            }
+            $low = $mid + 1;
+        }
     }
+
+    $chosen = $fit ?? $least;
+    $result['settings'] = $chosen['settings'];
+    $result['pages'] = $chosen['pages'];
+    $result['docx'] = $chosen['file'];
+    $result['ratio'] = $chosen['ratio'];
+    $purge($chosen['file']);
     return $result;
 }
