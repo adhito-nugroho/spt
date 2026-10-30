@@ -438,7 +438,7 @@ try {
             <i class='bx bx-info-circle text-blue-600 text-xl mt-0.5'></i>
             <div class="text-sm">
                 <p class="font-semibold text-blue-950 mb-1">Informasi Template</p>
-                <p class="text-blue-800">Upload template Word (.docx atau .doc) yang akan digunakan untuk generate surat tugas. Cukup tersedia <strong>dua kategori</strong> per tipe surat: <strong>1–3 Pegawai</strong> (format 1 halaman) dan <strong>Banyak Pegawai</strong> (naskah halaman 1 + lampiran daftar pegawai di halaman 2). Tipe surat: Umum untuk ASN biasa, Penyuluh untuk penyuluh kehutanan. Template harus memakai placeholder seperti <code class="bg-blue-100 px-1 rounded">${nomor_surat}</code>, <code class="bg-blue-100 px-1 rounded">${tanggal_surat}</code>, dll. Sistem memilih template otomatis sesuai jumlah pegawai dan tipe surat.</p>
+                <p class="text-blue-800">Upload template Word (.docx atau .doc) yang akan digunakan untuk generate surat tugas. Cukup tersedia <strong>dua kategori</strong> per tipe surat: <strong>1 Pegawai</strong> (format 1 halaman) dan <strong>Banyak Pegawai</strong> (naskah halaman 1 + lampiran daftar pegawai di halaman 2). Tipe surat: Umum untuk ASN biasa, Penyuluh untuk penyuluh kehutanan. Template harus memakai placeholder seperti <code class="bg-blue-100 px-1 rounded">${nomor_surat}</code>, <code class="bg-blue-100 px-1 rounded">${tanggal_surat}</code>, dll. Sistem memilih template otomatis sesuai jumlah pegawai dan tipe surat.</p>
             </div>
         </div>
     </div>
@@ -449,7 +449,7 @@ try {
             <i class='bx bx-git-merge text-amber-600 text-xl mt-0.5'></i>
             <div class="text-sm">
                 <p class="font-semibold text-amber-950 mb-1">Aturan Pemilihan Template</p>
-                <p class="text-amber-800">Surat dengan <strong>1–3 pegawai</strong> memakai template kategori <strong>1–3 Pegawai</strong> dan harus muat 1 halaman; baris pegawai yang tidak terpakai dihapus otomatis. Surat dengan <strong>4 pegawai atau lebih</strong> memakai template <strong>Banyak Pegawai</strong>: halaman 1 berisi naskah surat, halaman 2 berisi lampiran daftar pegawai. Setiap tipe surat (Umum/Penyuluh) hanya memerlukan satu template default untuk masing-masing kategori.</p>
+                <p class="text-amber-800">Surat dengan <strong>1 pegawai</strong> memakai template kategori <strong>1 Pegawai</strong> dan harus muat 1 halaman; baris pegawai yang tidak terpakai dihapus otomatis. Surat dengan <strong>2 pegawai atau lebih</strong> memakai template <strong>Banyak Pegawai</strong>: halaman 1 berisi naskah surat, halaman 2 berisi lampiran daftar pegawai. Setiap tipe surat (Umum/Penyuluh) hanya memerlukan satu template default untuk masing-masing kategori.</p>
             </div>
         </div>
     </div>
@@ -483,8 +483,8 @@ try {
                                 <td>
                                     <?php
                                     $kategori_labels = [
-                                        '1_pegawai' => '1–3 Pegawai (1 halaman)',
-                                        'banyak_pegawai' => 'Banyak Pegawai (4+, 2 halaman)'
+                                        '1_pegawai' => '1 Pegawai (1 halaman)',
+                                        'banyak_pegawai' => 'Banyak Pegawai (2+, 2 halaman)'
                                     ];
                                     $kategori = isset($template['kategori_template']) ? $template['kategori_template'] : 'banyak_pegawai';
                                     $kategori_label = isset($kategori_labels[$kategori]) ? $kategori_labels[$kategori] : 'Banyak Pegawai';
@@ -621,8 +621,8 @@ try {
                             <label class="block text-sm font-medium text-slate-700 mb-1">Kategori Template <span class="text-red-500">*</span></label>
                             <select name="kategori_template" required class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none">
                                 <option value="">Pilih Kategori</option>
-                                <option value="1_pegawai">1–3 Pegawai (1 halaman)</option>
-                                <option value="banyak_pegawai">Banyak Pegawai (4+, 2 halaman + lampiran)</option>
+                                <option value="1_pegawai">1 Pegawai (1 halaman)</option>
+                                <option value="banyak_pegawai">Banyak Pegawai (2+, 2 halaman + lampiran)</option>
                             </select>
                             <p class="text-xs text-slate-500 mt-1">Pilih kategori sesuai jumlah pegawai yang akan menggunakan template ini</p>
                         </div>
@@ -702,8 +702,8 @@ try {
                         <div>
                             <label class="block text-sm font-medium text-slate-700 mb-1">Kategori Template <span class="text-red-500">*</span></label>
                             <select name="kategori_template" id="edit-template-kategori" required class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none">
-                                <option value="1_pegawai">1–3 Pegawai (1 halaman)</option>
-                                <option value="banyak_pegawai">Banyak Pegawai (4+, 2 halaman + lampiran)</option>
+                                <option value="1_pegawai">1 Pegawai (1 halaman)</option>
+                                <option value="banyak_pegawai">Banyak Pegawai (2+, 2 halaman + lampiran)</option>
                             </select>
                         </div>
                         <div>

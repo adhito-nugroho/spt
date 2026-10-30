@@ -66,8 +66,8 @@ if (count($missing_categories) > 0) {
         
         foreach ($missing_categories as $kategori) {
             $kategori_labels = [
-                '1_pegawai' => '1–3 Pegawai (1 halaman)',
-                'banyak_pegawai' => 'Banyak Pegawai (4+, 2 halaman)'
+                '1_pegawai' => '1 Pegawai (1 halaman)',
+                'banyak_pegawai' => 'Banyak Pegawai (2+, 2 halaman)'
             ];
             
             $label = $kategori_labels[$kategori];

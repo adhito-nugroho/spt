@@ -448,9 +448,9 @@ function spt_layout_load_template_settings($pdo, $templateId)
 
 /**
  * Hapus blok baris pegawai ke-(maxPegawai+1) dan seterusnya dari DOCX.
- * Template "1-3 pegawai" memuat tiga blok pegawai (nama/nip/pangkat/jabatan);
- * saat surat hanya berisi 1 atau 2 pegawai, blok sisa dibuang agar tidak
- * meninggalkan baris kosong. Mengembalikan true bila ada baris yang dihapus.
+ * Dipakai untuk template satu pegawai yang masih memuat blok pegawai
+ * tambahan (nama/nip/pangkat/jabatan) agar tidak menyisakan baris kosong.
+ * Mengembalikan true bila ada baris yang dihapus.
  */
 function spt_template_trim_employee_blocks($docxPath, $maxPegawai)
 {
@@ -2596,14 +2596,14 @@ try {
     }
 
     // Tentukan kategori template berdasarkan jumlah pegawai.
-    // Satu template kecil dipakai untuk 1-3 pegawai (baris pegawai berlebih
-    // dipangkas otomatis), dan satu template banyak untuk 4+ pegawai.
+    // Hanya dua kategori: 1 pegawai memakai template khusus satu orang,
+    // 2 pegawai atau lebih memakai template banyak pegawai.
     $kategori_template = 'banyak_pegawai';
-    $kategori_label = 'Banyak Pegawai (4+ pegawai)';
+    $kategori_label = 'Banyak Pegawai (2+ pegawai)';
 
-    if ($jumlah_pegawai <= 3) {
+    if ($jumlah_pegawai <= 1) {
         $kategori_template = '1_pegawai';
-        $kategori_label = '1–3 Pegawai';
+        $kategori_label = '1 Pegawai';
     }
 
     // Tentukan tipe surat (umum/penyuluh)
@@ -3095,11 +3095,13 @@ try {
             throw new Exception('ZipArchive extension tidak tersedia. Silakan aktifkan extension zip di PHP.');
         }
         
-        // Template 1-3 pegawai berisi tiga blok pegawai; pangkas blok yang
-        // tidak terpakai sebelum template dibaca PHPWord.
-        $template_trimmed_copy = spt_template_prepare_for_count($template_path, $jumlah_pegawai);
-        if ($template_trimmed_copy !== null) {
-            $template_path = $template_trimmed_copy;
+        // Template satu pegawai bisa memuat blok pegawai tambahan; pangkas
+        // blok yang tidak terpakai sebelum template dibaca PHPWord.
+        if ($kategori_template === '1_pegawai') {
+            $template_trimmed_copy = spt_template_prepare_for_count($template_path, $jumlah_pegawai);
+            if ($template_trimmed_copy !== null) {
+                $template_path = $template_trimmed_copy;
+            }
         }
 
         $templateProcessor = new TemplateProcessor($template_path);

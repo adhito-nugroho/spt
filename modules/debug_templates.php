@@ -280,8 +280,8 @@ header('Content-Type: text/html; charset=utf-8');
     echo "<h2>3️⃣ Analisa Kategori</h2>";
     $required = ['1_pegawai', 'banyak_pegawai'];
     $labels = [
-        '1_pegawai' => '1–3 Pegawai (1 halaman)',
-        'banyak_pegawai' => 'Banyak Pegawai (4+, 2 halaman)'
+        '1_pegawai' => '1 Pegawai (1 halaman)',
+        'banyak_pegawai' => 'Banyak Pegawai (2+, 2 halaman)'
     ];
     
     try {

@@ -154,7 +154,7 @@ foreach ($jumlah_pegawai_tests as $jumlah) {
     
     // Tentukan kategori
     $kategori_template = 'banyak_pegawai';
-    if ($jumlah <= 3) {
+    if ($jumlah <= 1) {
         $kategori_template = '1_pegawai';
     }
     
@@ -235,7 +235,7 @@ echo "<div style='background: #f0f0f0; padding: 15px; border-radius: 5px;'>";
 echo "<p><strong>Untuk mengatasi error 'template tidak ditemukan', pastikan:</strong></p>";
 echo "<ol>";
 echo "<li>Tabel 'templates' memiliki kolom 'kategori_template'</li>";
-echo "<li>Ada minimal 1 template untuk setiap kategori (1_pegawai, 2_pegawai, 3_pegawai, banyak_pegawai)</li>";
+echo "<li>Ada minimal 1 template untuk setiap kategori (1_pegawai dan banyak_pegawai)</li>";
 echo "<li>File template yang tercatat di database benar-benar ada di folder assets/templates/</li>";
 echo "<li>Minimal ada 1 template dengan is_default = 1 untuk setiap kategori</li>";
 echo "<li>File template bisa dibaca (readable) dan tidak corrupt</li>";
