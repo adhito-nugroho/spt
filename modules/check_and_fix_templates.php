@@ -146,8 +146,8 @@ $existing_categories = array_column($templates_db, 'kategori_template');
 $missing_categories = array_diff($required_categories, $existing_categories);
 
 $kategori_labels = [
-    '1_pegawai' => '1 Pegawai (1 halaman)',
-    'banyak_pegawai' => 'Banyak Pegawai (2+, 2 halaman)'
+    '1_pegawai' => '1–3 Pegawai (1 halaman)',
+    'banyak_pegawai' => 'Banyak Pegawai (4+, 2 halaman)'
 ];
 
 echo "<table>";
@@ -278,7 +278,7 @@ echo "<h3>ℹ️ Informasi</h3>";
 echo "<div class='info'>";
 echo "<p><strong>Cara kerja sistem template:</strong></p>";
 echo "<ol>";
-echo "<li>Sistem memerlukan template untuk 2 kategori: 1 pegawai dan banyak pegawai (2+)</li>";
+echo "<li>Sistem memerlukan template untuk 2 kategori: 1–3 pegawai dan banyak pegawai (4+)</li>";
 echo "<li>Satu file .docx yang sama bisa digunakan untuk beberapa kategori</li>";
 echo "<li>Sistem akan memilih template berdasarkan jumlah pegawai dalam surat tugas</li>";
 echo "<li>Jika template kategori spesifik tidak ada, sistem akan fallback ke template 'banyak_pegawai'</li>";
