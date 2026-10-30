@@ -534,6 +534,42 @@ function spt_template_trim_employee_blocks($docxPath, $maxPegawai)
 }
 
 /**
+ * Cek apakah file template mampu menampilkan sejumlah pegawai.
+ * Template dianggap mendukung bila memiliki placeholder ${namaN} untuk
+ * pegawai terakhir, atau baris dinamis ${no} / ${daftar_pegawai}.
+ */
+function spt_template_supports_count($templatePath, $jumlahPegawai)
+{
+    $jumlahPegawai = (int)$jumlahPegawai;
+    if ($jumlahPegawai <= 1) {
+        return true;
+    }
+    if (!is_string($templatePath) || !is_file($templatePath) || !class_exists('ZipArchive')) {
+        return false;
+    }
+
+    $zip = new ZipArchive();
+    if ($zip->open($templatePath) !== true) {
+        return false;
+    }
+    $xml = $zip->getFromName('word/document.xml');
+    $zip->close();
+    if (!is_string($xml) || $xml === '') {
+        return false;
+    }
+
+    // Placeholder di DOCX sering terpecah antar-run; gabungkan teksnya dulu.
+    preg_match_all('/<w:t[^>]*>(.*?)<\/w:t>/s', $xml, $matches);
+    $text = html_entity_decode(implode('', $matches[1]));
+
+    if (strpos($text, '${no}') !== false || strpos($text, '${daftar_pegawai}') !== false) {
+        return true;
+    }
+
+    return strpos($text, '${nama' . $jumlahPegawai . '}') !== false;
+}
+
+/**
  * Salin template ke file sementara lalu pangkas blok pegawai berlebih.
  * Return path salinan, atau null bila template tidak perlu/tidak bisa dipangkas.
  */
@@ -2590,6 +2626,28 @@ try {
     $jabatan_pegawai = !empty($surat['pegawai_jabatan']) ? explode("|\n", $surat['pegawai_jabatan']) : [];
     $jumlah_pegawai = count($nama_pegawai);
 
+    // Ambil ulang daftar pegawai langsung dari tabel relasi. Ini membuat
+    // jumlah pegawai tidak bergantung pada delimiter GROUP_CONCAT yang bisa
+    // berbeda antar-setting MySQL di server.
+    try {
+        $stmt_pegawai = $pdo->prepare("SELECT p.nama, p.nip, p.pangkat, p.jabatan
+            FROM pegawai_tugas pt
+            INNER JOIN pegawai p ON pt.nip = p.nip
+            WHERE pt.id_surat_tugas = ?
+            ORDER BY pt.urutan");
+        $stmt_pegawai->execute([$_GET['id']]);
+        $pegawai_rows = $stmt_pegawai->fetchAll();
+        if (!empty($pegawai_rows)) {
+            $nama_pegawai = array_column($pegawai_rows, 'nama');
+            $nip_pegawai = array_column($pegawai_rows, 'nip');
+            $pangkat_pegawai = array_column($pegawai_rows, 'pangkat');
+            $jabatan_pegawai = array_column($pegawai_rows, 'jabatan');
+            $jumlah_pegawai = count($pegawai_rows);
+        }
+    } catch (PDOException $e) {
+        error_log("Error mengambil daftar pegawai: " . $e->getMessage());
+    }
+
     // Validasi jumlah pegawai
     if ($jumlah_pegawai == 0) {
         die("Surat tugas tidak memiliki pegawai yang ditugaskan.");
@@ -2866,7 +2924,83 @@ try {
         // Log error untuk debugging (bisa dihapus di production)
         error_log("Error mencari template: " . $e->getMessage());
     }
-    
+
+    // Jika template terpilih hanya punya blok pegawai lebih sedikit dari
+    // jumlah pegawai pada surat, cari template lain yang mendukung jumlah
+    // tersebut agar semua pegawai tampil (mis. file 3_orang).
+    $template_content_fallback = false;
+    if ($template_found && $jumlah_pegawai > 1 && !spt_template_supports_count($template_path, $jumlah_pegawai)) {
+        try {
+            $stmt_cand = $pdo->prepare("SELECT id, nama_file, nama, kategori_template, tipe_surat, berlaku_mulai FROM templates WHERE tipe_surat = ? AND (berlaku_mulai IS NULL OR berlaku_mulai <= ?) ORDER BY is_default DESC, berlaku_mulai IS NULL ASC, berlaku_mulai DESC, created_at DESC");
+            $stmt_cand->execute([$tipe_surat, $tgl_surat_key]);
+            foreach ($stmt_cand->fetchAll() as $cand) {
+                $cand_path = __DIR__ . '/../assets/templates/' . $cand['nama_file'];
+                if (spt_template_supports_count($cand_path, $jumlah_pegawai)) {
+                    $template_path = $cand_path;
+                    $template_id_terpilih = (int)$cand['id'];
+                    $template_nama = $cand['nama'];
+                    $template_kategori_terpilih = $cand['kategori_template'];
+                    $template_berlaku_mulai = $cand['berlaku_mulai'] ?? null;
+                    $template_content_fallback = true;
+                    error_log("SUKSES: Template pengganti dipilih karena template awal tidak mendukung {$jumlah_pegawai} pegawai - {$template_nama}");
+                    break;
+                }
+            }
+        } catch (PDOException $e) {
+            error_log("Error mencari template pengganti: " . $e->getMessage());
+        }
+    }
+
+    // Panel diagnostik: buka generate-surat.php?id=XX&debug=1
+    if (isset($_GET['debug']) && $_GET['debug'] === '1') {
+        $debug = [
+            'surat_id' => (int)$_GET['id'],
+            'jumlah_pegawai' => $jumlah_pegawai,
+            'nama_pegawai' => $nama_pegawai,
+            'tipe_surat' => $tipe_surat,
+            'tanggal_surat' => $surat['tanggal_surat'] ?? null,
+            'kategori_template' => $kategori_template,
+            'template_found' => $template_found,
+            'template_id' => $template_id_terpilih,
+            'template_nama' => $template_nama,
+            'template_kategori' => $template_kategori_terpilih,
+            'template_path' => $template_path,
+            'template_content_fallback' => $template_content_fallback,
+            'placeholders' => [],
+            'pegawai_tugas_rows' => [],
+        ];
+
+        if (!empty($template_path) && is_file($template_path) && class_exists('ZipArchive')) {
+            $zip_dbg = new ZipArchive();
+            if ($zip_dbg->open($template_path) === true) {
+                $xml_dbg = $zip_dbg->getFromName('word/document.xml');
+                $zip_dbg->close();
+                $text_dbg = '';
+                if (is_string($xml_dbg)) {
+                    preg_match_all('/<w:t[^>]*>(.*?)<\/w:t>/s', $xml_dbg, $m_dbg);
+                    $text_dbg = html_entity_decode(implode('', $m_dbg[1]));
+                }
+                foreach (['nama1', 'nama2', 'nama3', 'nama4', 'no', 'daftar_pegawai'] as $ph) {
+                    $debug['placeholders'][$ph] = substr_count($text_dbg, '${' . $ph . '}');
+                }
+            } else {
+                $debug['placeholders']['error'] = 'ZipArchive gagal membuka template (mungkin dikunci Word)';
+            }
+        }
+
+        try {
+            $stmt_dbg = $pdo->prepare("SELECT pt.urutan, pt.nip, p.nama FROM pegawai_tugas pt LEFT JOIN pegawai p ON pt.nip = p.nip WHERE pt.id_surat_tugas = ? ORDER BY pt.urutan");
+            $stmt_dbg->execute([$_GET['id']]);
+            $debug['pegawai_tugas_rows'] = $stmt_dbg->fetchAll();
+        } catch (PDOException $e) {
+            $debug['pegawai_tugas_rows_error'] = $e->getMessage();
+        }
+
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode($debug, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+
     // Jika template tidak ditemukan, tampilkan error sederhana
     if (!$template_found) {
         die('Error: Template untuk kategori "' . $kategori_label . '" tipe "' . $tipe_label . '" tidak ditemukan. Silakan upload template yang sesuai.');
@@ -3000,7 +3134,7 @@ try {
     }
 
     // Validasi akhir: Pastikan template yang dipilih sesuai kategori (jika dari database)
-    if ($template_from_db && $template_kategori_terpilih !== null) {
+    if (!$template_content_fallback && $template_from_db && $template_kategori_terpilih !== null) {
         if ($template_kategori_terpilih !== $kategori_template) {
             // Template tidak sesuai kategori, cari lagi atau gunakan fallback
             include '../includes/header.php';
@@ -3109,7 +3243,7 @@ try {
         
         // Verifikasi akhir: Pastikan template yang digunakan sesuai kategori
         // Jika template dari database, pastikan kategori sesuai
-        if ($template_from_db && $template_kategori_terpilih !== null) {
+        if (!$template_content_fallback && $template_from_db && $template_kategori_terpilih !== null) {
             if ($template_kategori_terpilih !== $kategori_template) {
                 // Template tidak sesuai kategori - ini seharusnya tidak terjadi karena sudah divalidasi sebelumnya
                 include '../includes/header.php';
@@ -3578,6 +3712,10 @@ main > .max-w-7xl { max-width: none !important; margin: 0 !important; height: 10
                         <i class="bx bx-history" style="color:#64748b;font-size:13px;margin-top:1px;"></i>
                         <span><strong>Template dasar lama</strong> &mdash; <?= htmlspecialchars($template_nama ?? basename($template_path)) ?>, sesuai tanggal surat <?= date('d/m/Y', strtotime($surat['tanggal_surat'])) ?>.</span>
                     <?php endif; ?>
+                </div>
+                <div class="spt-version-line" style="margin-top:4px;">
+                    <i class="bx bx-user" style="color:#64748b;font-size:13px;margin-top:1px;"></i>
+                    <span>Kategori: <strong><?= htmlspecialchars($kategori_label) ?></strong> &middot; <?= (int)$jumlah_pegawai ?> pegawai &middot; template: <?= htmlspecialchars($template_nama ?? basename($template_path)) ?>.</span>
                 </div>
             </div>
 
