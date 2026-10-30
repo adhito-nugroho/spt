@@ -21,6 +21,22 @@ function spt_le_ns()
     return 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
 }
 
+function spt_le_wp_ns()
+{
+    return 'http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing';
+}
+
+/**
+ * Paragraf kosong bergambar anchor (mis. stempel) yang dipindah ke atas tabel
+ * saat tabel mengambang dijadikan inline. Dikembalikan ke tinggi minimal di
+ * akhir penerapan agar tidak menambah tinggi blok.
+ */
+function &spt_le_anchor_paragraphs()
+{
+    static $list = [];
+    return $list;
+}
+
 function spt_le_load_dom($xml)
 {
     if (!is_string($xml) || $xml === '') {
@@ -883,6 +899,14 @@ function spt_le_apply_ttd(array $units, array $roles, DOMDocument $doc, array $s
     $nameTwips = spt_le_px_to_twips($settings['ttd_name_nip_spacing'] ?? 4);
 
     $spacerUsed = false;
+    $signatureSeen = false;
+    $hasSignature = false;
+    foreach ($items as $i) {
+        if ($roles[$i]['sub'] === 'signature') {
+            $hasSignature = true;
+            break;
+        }
+    }
     foreach ($items as $i) {
         $unit = $units[$i];
         $sub = $roles[$i]['sub'];
@@ -890,9 +914,16 @@ function spt_le_apply_ttd(array $units, array $roles, DOMDocument $doc, array $s
             // Tinggi baris mengikuti gambar; jangan diciutkan atau diberi line exact.
             spt_le_unit_set_margins($unit, $doc, 0, 0);
             $spacerUsed = true;
+            $signatureSeen = true;
             continue;
         }
         if ($sub === 'spacer') {
+            if ($hasSignature && !$signatureSeen) {
+                // Area tanda tangan sudah diisi gambar, jadi tidak perlu ruang
+                // kosong seukuran tanda tangan basah. Sisakan satu baris.
+                spt_le_unit_set_margins($unit, $doc, 0, 0);
+                continue;
+            }
             if (!$spacerUsed) {
                 spt_le_unit_reserve_space($unit, $doc, $spaceTwips);
                 $spacerUsed = true;
@@ -1041,7 +1072,9 @@ function spt_le_prepare_document(DOMDocument $doc)
     $xpath = new DOMXPath($doc);
     $xpath->registerNamespace('w', $ns);
 
-    foreach ($xpath->query('//w:tbl[w:tblPr/w:tblpPr]') as $table) {
+    $anchorParagraphs = &spt_le_anchor_paragraphs();
+    $anchorParagraphs = [];
+    foreach (iterator_to_array($xpath->query('//w:tbl[w:tblPr/w:tblpPr]')) as $table) {
         $tblPr = spt_le_child($table, 'tblPr');
         if ($tblPr) {
             $tblpPr = spt_le_child($tblPr, 'tblpPr');
@@ -1049,6 +1082,26 @@ function spt_le_prepare_document(DOMDocument $doc)
                 $tblPr->removeChild($tblpPr);
             }
             spt_le_set_table_alignment($table, $doc, 'right');
+        }
+
+        // Tabel mengambang tidak memakan tinggi alur teks, sehingga paragraf
+        // kosong bergambar anchor sesudahnya duduk di awal blok. Begitu tabel
+        // dijadikan inline paragraf itu terdorong ke bawah tabel dan gambar
+        // (mis. stempel) ikut turun. Pindahkan ke sebelum tabel agar posisinya
+        // tetap relatif ke awal blok tanda tangan.
+        $node = $table->nextSibling;
+        while ($node !== null && $node->nodeType === XML_TEXT_NODE && trim((string)$node->nodeValue) === '') {
+            $node = $node->nextSibling;
+        }
+        while ($node instanceof DOMElement && $node->nodeName === 'w:p') {
+            $hasAnchor = $node->getElementsByTagNameNS(spt_le_wp_ns(), 'anchor')->length > 0;
+            if (!$hasAnchor || trim(spt_le_unit_text($node)) !== '') {
+                break;
+            }
+            $next = $node->nextSibling;
+            $table->parentNode->insertBefore($node, $table);
+            $anchorParagraphs[] = $node;
+            $node = $next;
         }
     }
 
@@ -1102,6 +1155,26 @@ function spt_le_prepare_document(DOMDocument $doc)
             continue;
         }
         $body->removeChild($block);
+    }
+}
+
+/**
+ * Kembalikan paragraf anchor yang dipindah ke tinggi minimal. Gambar anchor
+ * mengambang tidak terpotong oleh tinggi baris, jadi baris tidak perlu tinggi.
+ */
+function spt_le_settle_anchor_paragraphs(DOMDocument $doc)
+{
+    $anchors = &spt_le_anchor_paragraphs();
+    $ns = spt_le_ns();
+    foreach ($anchors as $paragraph) {
+        if (!$paragraph->parentNode) {
+            continue;
+        }
+        $spacing = spt_le_spacing($paragraph, $doc);
+        $spacing->setAttributeNS($ns, 'w:before', '0');
+        $spacing->setAttributeNS($ns, 'w:after', '0');
+        $spacing->setAttributeNS($ns, 'w:line', '20');
+        $spacing->setAttributeNS($ns, 'w:lineRule', 'exact');
     }
 }
 
@@ -1239,6 +1312,7 @@ function spt_le_apply(DOMDocument $doc, array $settings)
 
     // Lampiran tidak dimampatkan, tetapi sel tabel tetap rata atas.
     spt_le_align_tables_top($doc);
+    spt_le_settle_anchor_paragraphs($doc);
 
     return [
         'units' => count($units),
