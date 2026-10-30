@@ -383,6 +383,16 @@ function spt_layout_query_params(array $settings)
 }
 
 /**
+ * Setting layout final (mis. hasil solver "Muat 1 Halaman") dikirim balik ke
+ * browser lewat header agar panel bisa menyinkronkan nilainya.
+ */
+function spt_layout_header_encode(array $settings)
+{
+    $json = json_encode($settings, JSON_UNESCAPED_UNICODE);
+    return rtrim(strtr(base64_encode((string)$json), '+/', '-_'), '=');
+}
+
+/**
  * Normalisasi setting layout yang tersimpan di database.
  * Hanya key yang dikenal yang dipakai, nilainya di-clamp ke range slider.
  */
@@ -1289,6 +1299,17 @@ function spt_layout_set_page_margins(DOMDocument $document, array $settings)
  */
 function spt_layout_apply_to_docx($docxPath, array $settings)
 {
+    $enginePath = dirname(__DIR__) . DIRECTORY_SEPARATOR . 'includes' . DIRECTORY_SEPARATOR . 'spt-layout-engine.php';
+    if (is_file($enginePath)) {
+        require_once $enginePath;
+        if (function_exists('spt_le_apply_docx')) {
+            $report = spt_le_apply_docx($docxPath, $settings);
+            if ($report !== false) {
+                return true;
+            }
+        }
+    }
+
     if (!class_exists('ZipArchive') || !is_file($docxPath)) {
         return false;
     }
@@ -3221,6 +3242,14 @@ try {
     } else {
         $layout_settings = null;
     }
+
+    // fit=1 meminta solver menyusutkan jarak sampai dokumen muat 1 halaman.
+    $fitRequested = isset($_GET['fit']) && (string)$_GET['fit'] === '1';
+    if ($fitRequested && $layout_settings === null) {
+        $layout_settings = $layout_defaults;
+        $layout_active = true;
+    }
+
     $layout_initial = $layout_settings !== null ? $layout_settings : $layout_defaults;
 
     // Preview (tanpa format): tampilkan halaman dengan iframe PDF agar sama persis dengan file Word/PDF
@@ -3251,8 +3280,30 @@ main > .max-w-7xl { max-width: none !important; margin: 0 !important; height: 10
 .spt-inspector-head { flex: 0 0 auto; padding: 13px 16px 11px; border-bottom: 1px solid #e2e8f0; background: #fff; }
 .spt-inspector-title { display: flex; align-items: center; gap: 7px; font-size: 15px; font-weight: 700; color: #0f172a; letter-spacing: -.01em; }
 .spt-inspector-sub { margin-top: 2px; font-size: 10.5px; line-height: 1.4; color: #64748b; }
-.spt-preset-row { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; margin-top: 9px; }
-.spt-preset-btn { position: relative; display: inline-flex; align-items: center; justify-content: center; gap: 5px; padding: 7px 8px; border-radius: 8px; border: 1px solid #e2e8f0; background: #fff; color: #334155; font-size: 10.5px; font-weight: 600; transition: .15s ease; cursor: pointer; }
+.spt-status-card { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 10px; padding: 9px 11px; border-radius: 10px; border: 1px solid #e2e8f0; background: #f8fafc; }
+.spt-status-card.is-fit { border-color: #a7f3d0; background: #ecfdf5; }
+.spt-status-card.is-over { border-color: #fde68a; background: #fffbeb; }
+.spt-status-main { display: flex; align-items: baseline; gap: 7px; min-width: 0; }
+.spt-status-count { font-size: 19px; font-weight: 800; line-height: 1; color: #0f172a; letter-spacing: -.02em; }
+.spt-status-card.is-fit .spt-status-count { color: #047857; }
+.spt-status-card.is-over .spt-status-count { color: #b45309; }
+.spt-status-text { font-size: 11px; font-weight: 600; color: #475569; }
+.spt-status-hint { font-size: 9.5px; color: #94a3b8; white-space: nowrap; }
+.spt-fit-row { display: flex; gap: 7px; margin-top: 8px; }
+.spt-fit-btn { flex: 1 1 auto; display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 9px 10px; border: 0; border-radius: 9px; background: #059669; color: #fff; font-size: 11.5px; font-weight: 700; cursor: pointer; transition: background .15s ease; position: relative; }
+.spt-fit-btn:hover { background: #047857; }
+.spt-fit-btn[disabled] { opacity: .75; cursor: progress; }
+.spt-fit-btn.is-loading > * { visibility: hidden; }
+.spt-fit-btn.is-loading::after { content: ''; position: absolute; width: 15px; height: 15px; border: 2px solid #d1fae5; border-top-color: transparent; border-radius: 999px; animation: spt-spin .7s linear infinite; }
+.spt-icon-reset { flex: 0 0 auto; width: 36px; border: 1px solid #e2e8f0; border-radius: 9px; background: #fff; color: #475569; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; }
+.spt-icon-reset:hover { background: #f8fafc; color: #0f172a; }
+.spt-preset-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px; margin-top: 8px; }
+.spt-density { margin-top: 9px; }
+.spt-density-head { display: flex; align-items: center; justify-content: space-between; font-size: 10px; font-weight: 600; color: #475569; }
+.spt-density-value { color: #047857; font-weight: 700; }
+.spt-density-range { width: 100%; margin: 5px 0 2px; accent-color: #059669; }
+.spt-density-scale { display: flex; justify-content: space-between; font-size: 8.5px; color: #94a3b8; }
+.spt-preset-btn { position: relative; display: inline-flex; align-items: center; justify-content: center; gap: 5px; padding: 7px 6px; border-radius: 8px; border: 1px solid #e2e8f0; background: #fff; color: #334155; font-size: 10px; font-weight: 600; transition: .15s ease; cursor: pointer; }
 .spt-preset-btn:hover { background: #f8fafc; border-color: #cbd5e1; }
 .spt-preset-btn.is-active { border-color: #10b981; background: #ecfdf5; color: #047857; }
 .spt-preset-btn.is-loading { color: transparent !important; pointer-events: none; }
@@ -3321,9 +3372,21 @@ main > .max-w-7xl { max-width: none !important; margin: 0 !important; height: 10
 .spt-btn-emerald:hover { background: #047857; border-color: #047857; }
 .spt-btn-outline { border: 1px solid #cbd5e1; background: #fff; color: #334155; }
 .spt-btn-outline:hover { background: #f8fafc; }
-.spt-canvas { position: relative; flex: 1 1 auto; min-height: 0; padding: 11px; display: flex; overflow: hidden; }
-.spt-frame { flex: 1 1 auto; width: 100%; height: 100%; border: 1px solid #e2e8f0; border-radius: 10px; background: #fff; }
-.spt-overlay { position: absolute; inset: 11px; z-index: 10; display: flex; align-items: center; justify-content: center; border-radius: 10px; background: rgba(255,255,255,.82); backdrop-filter: blur(2px); }
+.spt-canvas { position: relative; flex: 1 1 auto; min-height: 0; padding: 0; display: flex; flex-direction: column; overflow: hidden; }
+.spt-frame { flex: 1 1 auto; width: 100%; height: 100%; border: 0; background: #fff; }
+.spt-viewer { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+.spt-viewer-bar { flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 5px 10px; background: #f8fafc; border-bottom: 1px solid #e2e8f0; font-size: 10.5px; color: #475569; }
+.spt-viewer-group { display: flex; align-items: center; gap: 3px; }
+.spt-viewer-btn { width: 26px; height: 24px; display: inline-flex; align-items: center; justify-content: center; border: 1px solid #e2e8f0; border-radius: 6px; background: #fff; color: #475569; font-size: 13px; cursor: pointer; }
+.spt-viewer-btn:hover { background: #f1f5f9; color: #0f172a; }
+.spt-viewer-btn[disabled] { opacity: .45; cursor: default; }
+.spt-viewer-page { min-width: 64px; text-align: center; font-variant-numeric: tabular-nums; }
+.spt-viewer-zoom { min-width: 44px; text-align: center; font-variant-numeric: tabular-nums; }
+.spt-viewer-scroll { flex: 1 1 auto; min-height: 0; overflow: auto; background: #e8edf3; padding: 12px; scroll-behavior: auto; }
+.spt-pdf-pages { display: flex; flex-direction: column; align-items: center; gap: 12px; }
+.spt-pdf-page { background: #fff; box-shadow: 0 1px 3px rgba(15,23,42,.18), 0 8px 24px -18px rgba(15,23,42,.5); border-radius: 2px; }
+.spt-pdf-page canvas { display: block; }
+.spt-overlay { position: absolute; inset: 0; z-index: 10; display: flex; align-items: center; justify-content: center; background: rgba(255,255,255,.82); backdrop-filter: blur(2px); }
 .spt-spinner { width: 32px; height: 32px; border: 3px solid #059669; border-top-color: transparent; border-radius: 999px; animation: spt-spin .7s linear infinite; }
 .spt-resizer { flex: 0 0 5px; width: 5px; cursor: col-resize; background: transparent; position: relative; }
 .spt-resizer::after { content: ''; position: absolute; top: 50%; left: 1px; width: 2px; height: 36px; transform: translateY(-50%); border-radius: 2px; background: #cbd5e1; }
@@ -3353,15 +3416,35 @@ main > .max-w-7xl { max-width: none !important; margin: 0 !important; height: 10
                         <p class="spt-inspector-sub">Atur slider atau isi angka, lalu klik Terapkan Perubahan untuk memperbarui pratinjau PDF.</p>
                     </div>
                 </div>
+                <div class="spt-status-card" id="layoutStatusCard">
+                    <div class="spt-status-main">
+                        <span class="spt-status-count" id="statusCardCount">—</span>
+                        <span class="spt-status-text" id="statusCardText">Memeriksa halaman…</span>
+                    </div>
+                    <span class="spt-status-hint" id="statusCardHint">Pratinjau PDF</span>
+                </div>
+                <div class="spt-fit-row">
+                    <button type="button" id="layoutAutoFit" class="spt-fit-btn" title="Susutkan jarak sampai surat muat 1 halaman">
+                        <i class="bx bx-magic-wand" style="font-size:14px;"></i>
+                        <span data-fit-label>Muat 1 Halaman</span>
+                    </button>
+                    <button type="button" id="layoutReset" class="spt-icon-reset" title="Kembalikan ke default template">
+                        <i class="bx bx-reset" style="font-size:15px;"></i>
+                    </button>
+                </div>
                 <div class="spt-preset-row">
-                    <button type="button" id="layoutAutoFit" class="spt-preset-btn" title="Kompres tata letak agar pas 1 halaman">
-                        <i class="bx bx-collapse-vertical" style="font-size:13px;"></i>
-                        <span>Paksa Muat 1 Halaman</span>
-                    </button>
-                    <button type="button" id="layoutReset" class="spt-preset-btn" title="Kembalikan ke default template">
-                        <i class="bx bx-reset" style="font-size:13px;"></i>
-                        <span>Reset ke Default</span>
-                    </button>
+                    <button type="button" class="spt-preset-btn" data-density="0">Longgar</button>
+                    <button type="button" class="spt-preset-btn" data-density="33">Standar</button>
+                    <button type="button" class="spt-preset-btn" data-density="66">Rapat</button>
+                    <button type="button" class="spt-preset-btn" data-density="100">Sangat Rapat</button>
+                </div>
+                <div class="spt-density">
+                    <div class="spt-density-head">
+                        <span>Kepadatan isi</span>
+                        <span class="spt-density-value" id="densityLabel">Standar</span>
+                    </div>
+                    <input type="range" id="layoutDensity" class="spt-density-range" min="0" max="100" step="1" value="33" aria-label="Kepadatan isi surat">
+                    <div class="spt-density-scale"><span>Longgar</span><span>Sangat rapat</span></div>
                 </div>
                 <div class="spt-version-line">
                     <?php if (!empty($template_berlaku_mulai)): ?>
@@ -3379,7 +3462,7 @@ main > .max-w-7xl { max-width: none !important; margin: 0 !important; height: 10
 
             <div class="spt-inspector-body" id="layoutPanelBody">
                 <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:7px;">
-                    <span style="font-size:9.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#94a3b8;">Pengaturan Blok</span>
+                    <span style="font-size:9.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#94a3b8;">Lanjutan — Atur Per Blok</span>
                     <button type="button" id="layoutExpandAll" class="spt-reset-btn" style="width:auto;padding:0 6px;font-size:10px;">Tutup Semua</button>
                 </div>
                 <div id="layoutAccordions">
@@ -3585,7 +3668,25 @@ main > .max-w-7xl { max-width: none !important; margin: 0 !important; height: 10
                 </div>
             </div>
             <div class="spt-canvas" id="pdfCanvas">
-                <iframe id="pdfPreviewFrame" class="spt-frame" title="Preview surat (PDF)"></iframe>
+                <div class="spt-viewer" id="pdfViewer">
+                    <div class="spt-viewer-bar">
+                        <div class="spt-viewer-group">
+                            <button type="button" class="spt-viewer-btn" id="viewerPrev" title="Halaman sebelumnya"><i class="bx bx-chevron-left"></i></button>
+                            <span class="spt-viewer-page" id="viewerPageLabel">– / –</span>
+                            <button type="button" class="spt-viewer-btn" id="viewerNext" title="Halaman berikutnya"><i class="bx bx-chevron-right"></i></button>
+                        </div>
+                        <div class="spt-viewer-group">
+                            <button type="button" class="spt-viewer-btn" id="viewerZoomOut" title="Perkecil">−</button>
+                            <span class="spt-viewer-zoom" id="viewerZoomLabel">100%</span>
+                            <button type="button" class="spt-viewer-btn" id="viewerZoomIn" title="Perbesar">+</button>
+                            <button type="button" class="spt-viewer-btn" id="viewerFit" title="Sesuaikan lebar" style="width:auto;padding:0 8px;font-size:10px;">Lebar</button>
+                        </div>
+                    </div>
+                    <div class="spt-viewer-scroll" id="pdfScroll">
+                        <div class="spt-pdf-pages" id="pdfPages"></div>
+                    </div>
+                </div>
+                <iframe id="pdfPreviewFrame" class="spt-frame spt-hidden" title="Preview surat (PDF)"></iframe>
                 <div id="pdfPreviewLoading" class="spt-overlay spt-hidden">
                     <div style="display:flex;flex-direction:column;align-items:center;gap:8px;text-align:center;">
                         <div class="spt-spinner"></div>
@@ -3598,6 +3699,12 @@ main > .max-w-7xl { max-width: none !important; margin: 0 !important; height: 10
     </div>
 </div>
 
+<script type="module">
+import * as pdfjs from '../assets/vendor/pdfjs/pdf.min.mjs';
+pdfjs.GlobalWorkerOptions.workerSrc = new URL('../assets/vendor/pdfjs/pdf.worker.min.mjs', import.meta.url).href;
+window.pdfjsLib = pdfjs;
+window.dispatchEvent(new Event('spt-pdfjs-ready'));
+</script>
 <script>
 (function () {
     const SURAT_ID = <?= json_encode((string)$sid) ?>;
@@ -3640,16 +3747,18 @@ main > .max-w-7xl { max-width: none !important; margin: 0 !important; height: 10
         ttd_name_nip_spacing: { min: 0, max: 25, step: 1, decimals: 0, unit: 'px' }
     };
     const KEYS = Object.keys(STEP_CONFIG);
-    const AUTOFIT_VALUES = {
-        margin_top: 8, margin_bottom: 8, margin_left: 15, margin_right: 15,
-        font_size: 9.5, line_height: 1.0, kop_line_spacing: 0, kop_bottom_spacing: 4,
-        judul_top_spacing: -5, nomor_surat_spacing: 2, judul_bottom_spacing: 4,
-        dasar_top_spacing: 3, dasar_item_spacing: 1, dasar_bottom_spacing: 4,
-        memerintahkan_spacing: 4, pegawai_top_spacing: 3, pegawai_gap_spacing: 4,
-        pegawai_line_spacing: 1, untuk_top_spacing: 3, untuk_item_spacing: 1,
-        untuk_bottom_spacing: 5, ttd_offset: 4, ttd_x: 0, ttd_date_to_jabatan: 2,
-        ttd_space_height: 40, ttd_name_nip_spacing: 2, lock_ttd: 1
-    };
+    // Slider "Kepadatan" mengatur kelompok jarak sekaligus. Nilai 0 = longgar,
+    // 100 = paling rapat. Font/margin ikut menyesuaikan di ujung rapat.
+    const DENSITY_SPACING_KEYS = [
+        'kop_line_spacing', 'kop_bottom_spacing', 'judul_top_spacing',
+        'nomor_surat_spacing', 'judul_bottom_spacing', 'dasar_top_spacing',
+        'dasar_item_spacing', 'dasar_bottom_spacing', 'memerintahkan_spacing',
+        'pegawai_top_spacing', 'pegawai_gap_spacing', 'pegawai_line_spacing',
+        'untuk_top_spacing', 'untuk_item_spacing', 'untuk_bottom_spacing',
+        'ttd_offset', 'ttd_date_to_jabatan', 'ttd_name_nip_spacing'
+    ];
+    const DENSITY_LABELS = ['Longgar', 'Standar', 'Rapat', 'Sangat Rapat'];
+    let currentDensity = null;
 
     const frame = document.getElementById('pdfPreviewFrame');
     const loading = document.getElementById('pdfPreviewLoading');
@@ -3669,6 +3778,23 @@ main > .max-w-7xl { max-width: none !important; margin: 0 !important; height: 10
     const inspector = document.getElementById('sptInspector');
     const resizer = document.getElementById('layoutResizer');
     const accordions = Array.from(document.querySelectorAll('.spt-acc'));
+    const statusCard = document.getElementById('layoutStatusCard');
+    const statusCount = document.getElementById('statusCardCount');
+    const statusText = document.getElementById('statusCardText');
+    const statusHint = document.getElementById('statusCardHint');
+    const densitySlider = document.getElementById('layoutDensity');
+    const densityLabel = document.getElementById('densityLabel');
+    const presetButtons = Array.from(document.querySelectorAll('.spt-preset-btn[data-density]'));
+    const pdfViewer = document.getElementById('pdfViewer');
+    const pdfScroll = document.getElementById('pdfScroll');
+    const pdfPages = document.getElementById('pdfPages');
+    const viewerPrev = document.getElementById('viewerPrev');
+    const viewerNext = document.getElementById('viewerNext');
+    const viewerZoomIn = document.getElementById('viewerZoomIn');
+    const viewerZoomOut = document.getElementById('viewerZoomOut');
+    const viewerFit = document.getElementById('viewerFit');
+    const viewerPageLabel = document.getElementById('viewerPageLabel');
+    const viewerZoomLabel = document.getElementById('viewerZoomLabel');
     const ranges = {};
     const numbers = {};
     document.querySelectorAll('[data-layout-key]').forEach(function (el) {
@@ -3684,6 +3810,7 @@ main > .max-w-7xl { max-width: none !important; margin: 0 !important; height: 10
     let hasSavedDefault = HAS_SAVED_DEFAULT;
     let active = HAS_SAVED_DEFAULT;
     let pageCount = null;
+    let renderMethod = '';
     let currentBlobUrl = null;
     let autoFitTimer = null;
     let pendingCountUrl = null;
@@ -3714,8 +3841,57 @@ main > .max-w-7xl { max-width: none !important; margin: 0 !important; height: 10
         return matchesState(templateDefaults);
     }
 
-    function isAutoFitState() {
-        return matchesState(AUTOFIT_VALUES);
+    function nearestDensityLabel() {
+        if (currentDensity === null) return 'Kustom';
+        if (currentDensity < 17) return 'Longgar';
+        if (currentDensity < 50) return 'Standar';
+        if (currentDensity < 84) return 'Rapat';
+        return 'Sangat Rapat';
+    }
+
+    function applyDensity(pct) {
+        const t = Math.max(0, Math.min(100, Number(pct))) / 100;
+        const spacingFactor = 1.45 - 0.95 * t;
+        DENSITY_SPACING_KEYS.forEach(function (key) {
+            state[key] = clamp(key, Math.round(Number(templateDefaults[key] || 0) * spacingFactor));
+        });
+        const baseFont = Number(templateDefaults.font_size) || 11;
+        state.font_size = clamp('font_size', Math.round((baseFont + (9.5 - baseFont) * t) * 2) / 2);
+        const baseLine = Number(templateDefaults.line_height) || 1.0;
+        state.line_height = clamp('line_height', Math.round((baseLine + (1.0 - baseLine) * t) * 20) / 20);
+        const topBottom = Number(templateDefaults.margin_top) || 8;
+        const side = Number(templateDefaults.margin_left) || 20;
+        state.margin_top = clamp('margin_top', Math.round((topBottom + (8 - topBottom) * t) * 2) / 2);
+        state.margin_bottom = clamp('margin_bottom', Math.round((Number(templateDefaults.margin_bottom) + (8 - Number(templateDefaults.margin_bottom)) * t) * 2) / 2);
+        state.margin_left = clamp('margin_left', Math.round((side + (12 - side) * t) * 2) / 2);
+        state.margin_right = clamp('margin_right', Math.round((Number(templateDefaults.margin_right) + (12 - Number(templateDefaults.margin_right)) * t) * 2) / 2);
+        state.ttd_space_height = clamp('ttd_space_height', Math.round((Number(templateDefaults.ttd_space_height) + (45 - Number(templateDefaults.ttd_space_height)) * t)));
+        state.lock_ttd = t >= 0.5 ? 1 : (templateDefaults.lock_ttd ? 1 : 0);
+        currentDensity = Number(pct);
+    }
+
+    function estimateDensity() {
+        let sum = 0;
+        let count = 0;
+        DENSITY_SPACING_KEYS.forEach(function (key) {
+            const base = Number(templateDefaults[key]);
+            if (base > 0) {
+                sum += Number(state[key]) / base;
+                count++;
+            }
+        });
+        if (!count) return 33;
+        const factor = sum / count;
+        return Math.max(0, Math.min(100, Math.round((1.45 - factor) / 0.95 * 100)));
+    }
+
+    function syncDensityUi() {
+        if (densitySlider && currentDensity !== null) densitySlider.value = currentDensity;
+        if (densityLabel) densityLabel.textContent = nearestDensityLabel();
+        presetButtons.forEach(function (button) {
+            const value = Number(button.dataset.density);
+            button.classList.toggle('is-active', currentDensity !== null && Math.abs(value - Number(densitySlider ? densitySlider.value : -1)) < 1);
+        });
     }
 
     function isDirty() {
@@ -3759,9 +3935,7 @@ main > .max-w-7xl { max-width: none !important; margin: 0 !important; height: 10
     }
 
     function updatePresetState() {
-        if (!autoFitBtn) return;
-        const isActive = isAutoFitState() && pageCount === 1 && !isDirty();
-        autoFitBtn.classList.toggle('is-active', isActive);
+        syncDensityUi();
     }
 
     function updateStatus() {
@@ -3781,19 +3955,32 @@ main > .max-w-7xl { max-width: none !important; margin: 0 !important; height: 10
         status.textContent = 'Kustom aktif — belum disimpan sebagai default';
     }
 
-    function updatePageBadge(count) {
+    function updatePageBadge(count, method) {
         pageCount = (typeof count === 'number' && count > 0) ? count : null;
-        if (!pageBadge) return;
-        if (pageCount === null) {
-            pageBadge.textContent = 'Jumlah halaman tidak diketahui';
-            pageBadge.className = 'spt-badge spt-badge-neutral';
-        } else if (pageCount === 1) {
-            pageBadge.textContent = '1 Halaman — Ideal';
-            pageBadge.className = 'spt-badge spt-badge-emerald';
-        } else {
-            pageBadge.textContent = pageCount + ' Halaman — Belum Muat 1 Halaman';
-            pageBadge.className = 'spt-badge spt-badge-amber';
+        if (method) renderMethod = method;
+        if (pageBadge) {
+            if (pageCount === null) {
+                pageBadge.textContent = 'Jumlah halaman tidak diketahui';
+                pageBadge.className = 'spt-badge spt-badge-neutral';
+            } else if (pageCount === 1) {
+                pageBadge.textContent = '1 Halaman — Ideal';
+                pageBadge.className = 'spt-badge spt-badge-emerald';
+            } else {
+                pageBadge.textContent = pageCount + ' Halaman — Belum Muat 1 Halaman';
+                pageBadge.className = 'spt-badge spt-badge-amber';
+            }
         }
+        if (statusCount) statusCount.textContent = pageCount === null ? '—' : String(pageCount);
+        if (statusText) {
+            statusText.textContent = pageCount === null
+                ? 'Halaman tidak diketahui'
+                : (pageCount === 1 ? 'Halaman — sudah pas' : 'Halaman — belum muat 1');
+        }
+        if (statusCard) {
+            statusCard.classList.toggle('is-fit', pageCount === 1);
+            statusCard.classList.toggle('is-over', pageCount !== null && pageCount > 1);
+        }
+        if (statusHint) statusHint.textContent = renderMethod || 'Pratinjau PDF';
         updatePresetState();
     }
 
@@ -3938,9 +4125,150 @@ main > .max-w-7xl { max-width: none !important; margin: 0 !important; height: 10
         }, 3500);
     }
 
+    /* --- Viewer PDF lokal (pdf.js) --- */
+    function pdfjsReady() {
+        if (window.pdfjsLib) return Promise.resolve(window.pdfjsLib);
+        return new Promise(function (resolve) {
+            const timer = setTimeout(function () { resolve(window.pdfjsLib || null); }, 6000);
+            window.addEventListener('spt-pdfjs-ready', function () {
+                clearTimeout(timer);
+                resolve(window.pdfjsLib || null);
+            }, { once: true });
+        });
+    }
+    let pdfDoc = null;
+    let pdfLoadingTask = null;
+    let zoomFactor = 1;
+    let currentPage = 1;
+    let renderSeq = 0;
+    let resizeTimer = null;
+
+    function setViewerMode(usePdfJs) {
+        if (pdfViewer) pdfViewer.classList.toggle('spt-hidden', !usePdfJs);
+        if (frame) frame.classList.toggle('spt-hidden', usePdfJs);
+    }
+
+    function updatePageNav() {
+        if (!pdfDoc) {
+            if (viewerPageLabel) viewerPageLabel.textContent = '– / –';
+            if (viewerPrev) viewerPrev.disabled = true;
+            if (viewerNext) viewerNext.disabled = true;
+            return;
+        }
+        if (viewerPageLabel) viewerPageLabel.textContent = currentPage + ' / ' + pdfDoc.numPages;
+        if (viewerPrev) viewerPrev.disabled = currentPage <= 1;
+        if (viewerNext) viewerNext.disabled = currentPage >= pdfDoc.numPages;
+    }
+
+    function goToPage(page) {
+        if (!pdfDoc || !pdfPages) return;
+        currentPage = Math.max(1, Math.min(pdfDoc.numPages, page));
+        const target = pdfPages.children[currentPage - 1];
+        if (target && pdfScroll) {
+            pdfScroll.scrollTop = Math.max(0, target.offsetTop - 12);
+        }
+        updatePageNav();
+    }
+
+    function basePageScale(viewport) {
+        const available = (pdfScroll ? pdfScroll.clientWidth : 800) - 24;
+        return Math.max(0.2, available / viewport.width);
+    }
+
+    async function renderAllPages() {
+        if (!pdfDoc || !pdfPages) return;
+        const seq = ++renderSeq;
+        const scrollRatio = (pdfScroll && pdfScroll.scrollHeight) ? (pdfScroll.scrollTop / pdfScroll.scrollHeight) : 0;
+        const dpr = Math.min(window.devicePixelRatio || 1, 2);
+        const total = pdfDoc.numPages;
+        pdfPages.replaceChildren();
+        for (let n = 1; n <= total; n++) {
+            const page = await pdfDoc.getPage(n);
+            if (seq !== renderSeq) return;
+            const unscaled = page.getViewport({ scale: 1 });
+            const scale = basePageScale(unscaled) * zoomFactor;
+            const viewport = page.getViewport({ scale: scale * dpr });
+            const canvas = document.createElement('canvas');
+            canvas.width = Math.floor(viewport.width);
+            canvas.height = Math.floor(viewport.height);
+            canvas.style.width = Math.floor(unscaled.width * scale) + 'px';
+            canvas.style.height = Math.floor(unscaled.height * scale) + 'px';
+            const holder = document.createElement('div');
+            holder.className = 'spt-pdf-page';
+            holder.appendChild(canvas);
+            pdfPages.appendChild(holder);
+            await page.render({ canvasContext: canvas.getContext('2d'), viewport: viewport }).promise;
+            if (seq !== renderSeq) return;
+        }
+        if (viewerZoomLabel) viewerZoomLabel.textContent = Math.round(zoomFactor * 100) + '%';
+        if (pdfScroll) pdfScroll.scrollTop = scrollRatio * pdfScroll.scrollHeight;
+        currentPage = 1;
+        updatePageNav();
+    }
+
+    async function showPdfBlob(blob, count, method) {
+        if (currentBlobUrl) {
+            try { URL.revokeObjectURL(currentBlobUrl); } catch (e) {}
+        }
+        currentBlobUrl = URL.createObjectURL(blob);
+        updatePageBadge(count > 0 ? count : null, method);
+        const lib = await pdfjsReady();
+        if (!lib) {
+            setViewerMode(false);
+            if (frame) frame.src = currentBlobUrl;
+            return;
+        }
+        try {
+            if (pdfLoadingTask) {
+                try { await pdfLoadingTask.destroy(); } catch (e) {}
+            }
+            const data = new Uint8Array(await blob.arrayBuffer());
+            pdfLoadingTask = lib.getDocument({ data: data });
+            pdfDoc = await pdfLoadingTask.promise;
+            currentPage = 1;
+            setViewerMode(true);
+            await renderAllPages();
+        } catch (error) {
+            console.warn('pdf.js gagal, memakai iframe bawaan browser', error);
+            pdfDoc = null;
+            setViewerMode(false);
+            if (frame) frame.src = currentBlobUrl;
+        }
+    }
+
+    if (viewerPrev) viewerPrev.addEventListener('click', function () { goToPage(currentPage - 1); });
+    if (viewerNext) viewerNext.addEventListener('click', function () { goToPage(currentPage + 1); });
+    if (viewerZoomIn) viewerZoomIn.addEventListener('click', function () { zoomFactor = Math.min(3, zoomFactor + 0.15); renderAllPages(); });
+    if (viewerZoomOut) viewerZoomOut.addEventListener('click', function () { zoomFactor = Math.max(0.4, zoomFactor - 0.15); renderAllPages(); });
+    if (viewerFit) viewerFit.addEventListener('click', function () { zoomFactor = 1; renderAllPages(); });
+    if (pdfScroll) {
+        pdfScroll.addEventListener('scroll', function () {
+            if (!pdfDoc || !pdfPages) return;
+            const boxes = Array.from(pdfPages.children);
+            let nearest = 1;
+            boxes.forEach(function (box, index) {
+                if (box.offsetTop - 24 <= pdfScroll.scrollTop) nearest = index + 1;
+            });
+            if (nearest !== currentPage) {
+                currentPage = nearest;
+                updatePageNav();
+            }
+        }, { passive: true });
+    }
+    let lastViewerWidth = null;
+    window.addEventListener('resize', function () {
+        if (resizeTimer) clearTimeout(resizeTimer);
+        resizeTimer = setTimeout(function () {
+            if (!pdfDoc || !pdfScroll) return;
+            if (lastViewerWidth === null) lastViewerWidth = pdfScroll.clientWidth;
+            if (pdfScroll.clientWidth === lastViewerWidth) return;
+            lastViewerWidth = pdfScroll.clientWidth;
+            renderAllPages();
+        }, 220);
+    });
+
     async function loadPreview(url, attempt) {
         attempt = attempt || 0;
-        if (!frame) return false;
         showLoading(true);
         setApplyLoading(true);
         const sep = url.indexOf('?') === -1 ? '?' : '&';
@@ -3950,17 +4278,19 @@ main > .max-w-7xl { max-width: none !important; margin: 0 !important; height: 10
                 credentials: 'same-origin'
             });
             const contentType = (response.headers.get('content-type') || '').toLowerCase();
+            if (response.status === 503 && contentType.indexOf('application/json') !== -1) {
+                // Word sedang sibuk: coba lagi tanpa memuat halaman HTML di viewer.
+                if (attempt < 3) {
+                    await new Promise(function (resolve) { setTimeout(resolve, 1200); });
+                    return loadPreview(url, attempt + 1);
+                }
+            }
             if (response.ok && contentType.indexOf('application/pdf') !== -1) {
                 const count = parseInt(response.headers.get('X-SPT-Page-Count') || '0', 10);
+                const method = response.headers.get('X-SPT-Render') || '';
                 const blob = await response.blob();
                 if (blob && blob.size > 0) {
-                    const nextBlobUrl = URL.createObjectURL(blob);
-                    if (currentBlobUrl) {
-                        try { URL.revokeObjectURL(currentBlobUrl); } catch (e) {}
-                    }
-                    currentBlobUrl = nextBlobUrl;
-                    frame.src = nextBlobUrl;
-                    updatePageBadge(count > 0 ? count : null);
+                    await showPdfBlob(blob, count, method);
                     appliedState = Object.assign({}, state, { lock_ttd: state.lock_ttd ? 1 : 0 });
                     updateDirtyUi();
                     updateAccordionBadges();
@@ -3973,15 +4303,17 @@ main > .max-w-7xl { max-width: none !important; margin: 0 !important; height: 10
                 }
             }
 
-            // Bukan PDF (mis. halaman retry Word COM). Biarkan iframe menanganinya.
-            frame.src = url;
+            // Bukan PDF: biarkan iframe menampilkan respons apa adanya.
+            setViewerMode(false);
+            if (frame) frame.src = url;
             showLoading(false);
             setApplyLoading(false);
             setAutoFitLoading(false);
             schedulePageCountRefresh(url);
             return false;
         } catch (error) {
-            frame.src = url;
+            setViewerMode(false);
+            if (frame) frame.src = url;
             showLoading(false);
             setApplyLoading(false);
             setAutoFitLoading(false);
@@ -4017,6 +4349,7 @@ main > .max-w-7xl { max-width: none !important; margin: 0 !important; height: 10
             if (ranges[key]) ranges[key].value = state[key];
             if (numbers[key]) numbers[key].value = fmt(key, state[key]);
         }
+        currentDensity = null;
         markDirty();
     }
 
@@ -4069,6 +4402,7 @@ main > .max-w-7xl { max-width: none !important; margin: 0 !important; height: 10
                 const value = clamp(key, range.value);
                 state[key] = value;
                 if (numbers[key]) numbers[key].value = fmt(key, value);
+                currentDensity = null;
                 markDirty();
             });
             range.addEventListener('dblclick', function () { resetKey(key); });
@@ -4083,6 +4417,7 @@ main > .max-w-7xl { max-width: none !important; margin: 0 !important; height: 10
                 if (!isFinite(parsed)) return;
                 state[key] = clamp(key, parsed);
                 if (range) range.value = state[key];
+                currentDensity = null;
                 markDirty();
             });
             number.addEventListener('blur', function () {
@@ -4090,6 +4425,7 @@ main > .max-w-7xl { max-width: none !important; margin: 0 !important; height: 10
                 state[key] = value;
                 number.value = fmt(key, value);
                 if (range) range.value = value;
+                currentDensity = null;
                 markDirty();
             });
             number.addEventListener('keydown', function (event) {
@@ -4111,6 +4447,7 @@ main > .max-w-7xl { max-width: none !important; margin: 0 !important; height: 10
             state[key] = clamp(key, Number(state[key]) + direction * cfg.step);
             if (ranges[key]) ranges[key].value = state[key];
             if (numbers[key]) numbers[key].value = fmt(key, state[key]);
+            currentDensity = null;
             markDirty();
         });
     });
@@ -4175,15 +4512,103 @@ main > .max-w-7xl { max-width: none !important; margin: 0 !important; height: 10
         });
     }
 
-    const autoFit = autoFitBtn;
-    if (autoFit) {
-        autoFit.addEventListener('click', function () {
-            KEYS.forEach(function (key) { state[key] = clamp(key, AUTOFIT_VALUES[key]); });
-            state.lock_ttd = AUTOFIT_VALUES.lock_ttd;
+    function decodeLayoutHeader(value) {
+        try {
+            const base64 = value.replace(/-/g, '+').replace(/_/g, '/');
+            const padded = base64 + '==='.slice((base64.length + 3) % 4);
+            const binary = atob(padded);
+            const bytes = new Uint8Array(binary.length);
+            for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+            return JSON.parse(new TextDecoder('utf-8').decode(bytes));
+        } catch (error) {
+            return null;
+        }
+    }
+
+    async function runFit() {
+        active = true;
+        const params = buildParams(true);
+        params.set('fit', '1');
+        showLoading(true);
+        setApplyLoading(true);
+        setAutoFitLoading(true);
+        try {
+            const response = await fetch('generate-surat.php?' + params.toString() + '&_ts=' + Date.now(), {
+                cache: 'no-store',
+                credentials: 'same-origin'
+            });
+            const contentType = (response.headers.get('content-type') || '').toLowerCase();
+            if (!response.ok || contentType.indexOf('application/pdf') === -1) {
+                throw new Error('Word belum siap merender dokumen.');
+            }
+            const layoutHeader = response.headers.get('X-SPT-Layout');
+            const parsed = layoutHeader ? decodeLayoutHeader(layoutHeader) : null;
+            if (parsed) {
+                KEYS.forEach(function (key) {
+                    if (parsed[key] !== undefined) state[key] = clamp(key, parsed[key]);
+                });
+                state.lock_ttd = parsed.lock_ttd ? 1 : 0;
+                currentDensity = null;
+                syncUi();
+            }
+            const count = parseInt(response.headers.get('X-SPT-Page-Count') || '0', 10);
+            const method = response.headers.get('X-SPT-Render') || '';
+            const blob = await response.blob();
+            await showPdfBlob(blob, count, method);
+            appliedState = Object.assign({}, state, { lock_ttd: state.lock_ttd ? 1 : 0 });
+            persistLocal();
+            updateHistory();
+            updateDownloadLinks();
+            updateDirtyUi();
+            updateAccordionBadges();
+            updatePresetState();
+            updateStatus();
+            if (count > 1) {
+                if (window.Swal) {
+                    Swal.fire({
+                        icon: 'info',
+                        title: 'Belum bisa muat 1 halaman',
+                        text: 'Surat tetap ' + count + ' halaman setelah dipadatkan. Kurangi butir tugas/pegawai atau pilih template dengan area isi lebih besar.',
+                        confirmButtonColor: '#059669'
+                    });
+                } else if (statusText) {
+                    statusText.textContent = 'Tetap ' + count + ' halaman';
+                }
+            }
+            return true;
+        } catch (error) {
+            if (window.Swal) {
+                Swal.fire({ icon: 'warning', title: 'Gagal memuat', text: error.message || 'Coba lagi sebentar.' , confirmButtonColor: '#059669' });
+            }
+            return false;
+        } finally {
+            showLoading(false);
+            setApplyLoading(false);
+            setAutoFitLoading(false);
+        }
+    }
+
+    if (autoFitBtn) {
+        autoFitBtn.addEventListener('click', runFit);
+    }
+
+    presetButtons.forEach(function (button) {
+        button.addEventListener('click', function () {
+            applyDensity(Number(button.dataset.density));
             syncUi();
             markDirty();
-            setAutoFitLoading(true);
             applyLayout();
+        });
+    });
+
+    if (densitySlider) {
+        densitySlider.addEventListener('input', function () {
+            applyDensity(Number(densitySlider.value));
+            syncUi();
+            markDirty();
+        });
+        densitySlider.addEventListener('change', function () {
+            if (applyBtn && !applyBtn.disabled) applyLayout();
         });
     }
 
@@ -4347,8 +4772,12 @@ main > .max-w-7xl { max-width: none !important; margin: 0 !important; height: 10
         });
     }
 
+    if (currentDensity === null) {
+        currentDensity = estimateDensity();
+    }
     syncUi();
     updateDownloadLinks();
+    setViewerMode(false);
 
     if (restoredFromStorage) {
         persistLocal();
@@ -4395,17 +4824,29 @@ Settings::setTempDir($tempDir);
     // dan untuk Word COM/LibreOffice. File asli tetap dipakai fallback Dompdf.
     $layout_adjusted_docx = null;
     $pdf_source_docx = $tempDocx;
+    $fit_report = null;
     if (($format === 'pdf' || $format === 'docx') && $layout_active && $layout_settings !== null) {
-        $layout_adjusted_docx = $tempDir . DIRECTORY_SEPARATOR . 'spt_layout_' . uniqid() . '.docx';
-        if (@copy($tempDocx, $layout_adjusted_docx)) {
-            if (spt_layout_apply_to_docx($layout_adjusted_docx, $layout_settings)) {
+        if ($fitRequested && $format === 'pdf') {
+            require_once dirname(__DIR__) . DIRECTORY_SEPARATOR . 'includes' . DIRECTORY_SEPARATOR . 'spt-render.php';
+            set_time_limit(180);
+            $fit_report = spt_render_fit($tempDocx, $layout_settings, 1);
+            if (!empty($fit_report['docx'])) {
+                $layout_adjusted_docx = $fit_report['docx'];
                 $pdf_source_docx = $layout_adjusted_docx;
-            } else {
-                @unlink($layout_adjusted_docx);
-                $layout_adjusted_docx = null;
+                $layout_settings = $fit_report['settings'];
             }
         } else {
-            $layout_adjusted_docx = null;
+            $layout_adjusted_docx = $tempDir . DIRECTORY_SEPARATOR . 'spt_layout_' . uniqid() . '.docx';
+            if (@copy($tempDocx, $layout_adjusted_docx)) {
+                if (spt_layout_apply_to_docx($layout_adjusted_docx, $layout_settings)) {
+                    $pdf_source_docx = $layout_adjusted_docx;
+                } else {
+                    @unlink($layout_adjusted_docx);
+                    $layout_adjusted_docx = null;
+                }
+            } else {
+                $layout_adjusted_docx = null;
+            }
         }
     }
 
@@ -4417,26 +4858,43 @@ Settings::setTempDir($tempDir);
             $hasComSupport = class_exists('COM');
             $comRetryCount = isset($_GET['com_retry']) ? (int)$_GET['com_retry'] : 0;
 
+            $sptPageCountFromRender = null;
+
             try {
-                // Prioritas 1: Microsoft Word COM (hasil 100% sama dengan Word)
-                if ($hasComSupport) {
-                    $tempPdf = konversi_docx_ke_pdf_word_com($pdf_source_docx, 3);
-                    if ($tempPdf !== null) {
-                        $usedMethod = 'Word COM';
-                    }
+                // Prioritas 1 & 2: Word COM lalu LibreOffice, lewat satu sesi Word.
+                require_once dirname(__DIR__) . DIRECTORY_SEPARATOR . 'includes' . DIRECTORY_SEPARATOR . 'spt-render.php';
+                $renderError = null;
+                $render = spt_render_pdf($pdf_source_docx, null, $renderError);
+                if ($render !== null) {
+                    $tempPdf = $render['path'];
+                    $usedMethod = $render['method'];
+                    $sptPageCountFromRender = $render['pages'];
+                } else {
+                    error_log('Render PDF gagal: ' . ($renderError ?? 'tidak diketahui'));
                 }
 
                 // Jika server mendukung COM tetapi Word COM belum berhasil dan com_retry < 3,
-                // tampilkan halaman auto-reload agar browser mencoba kembali secara otomatis sampai Word COM merespons.
+                // minta browser mencoba kembali. Untuk iframe pratinjau, balas 503 JSON
+                // agar viewer dapat mengulang tanpa memuat halaman HTML di dalam iframe.
                 if ($tempPdf === null && $hasComSupport && $comRetryCount < 3) {
                     @unlink($tempDocx);
                     if ($layout_adjusted_docx) {
                         @unlink($layout_adjusted_docx);
                     }
                     $nextRetry = $comRetryCount + 1;
+                    if (ob_get_length()) {
+                        ob_clean();
+                    }
+                    if ($inlinePdf) {
+                        http_response_code(503);
+                        header('Content-Type: application/json; charset=utf-8');
+                        header('Retry-After: 1');
+                        header('X-SPT-Retry: ' . $nextRetry);
+                        echo json_encode(['error' => 'word_busy', 'retry' => $nextRetry]);
+                        exit;
+                    }
                     $protocol = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') ? 'https' : 'http';
                     $currentUrl = $protocol . '://' . $_SERVER['HTTP_HOST'] . $_SERVER['REQUEST_URI'];
-                    
                     $urlParts = parse_url($currentUrl);
                     $queryParams = [];
                     if (isset($urlParts['query'])) {
@@ -4470,14 +4928,6 @@ Settings::setTempDir($tempDir);
                     </html>
                     <?php
                     exit;
-                }
-
-                // Prioritas 2: LibreOffice (fallback jika Word COM tidak ada atau tidak dapat digunakan)
-                if ($tempPdf === null) {
-                    $tempPdf = konversi_docx_ke_pdf_libreoffice($pdf_source_docx);
-                    if ($tempPdf !== null) {
-                        $usedMethod = 'LibreOffice';
-                    }
                 }
 
                 // Prioritas 3: DomPDF (fallback terakhir hanya jika COM dan LibreOffice tidak ada/gagal)
@@ -4529,9 +4979,25 @@ Settings::setTempDir($tempDir);
                     ob_clean();
                 }
                 header('Content-Type: application/pdf');
-                $sptPageCount = spt_pdf_page_count($tempPdf);
+                header('Cache-Control: no-store');
+                $sptPageCount = $sptPageCountFromRender;
+                if (!$sptPageCount) {
+                    $sptPageCount = function_exists('spt_render_pdf_page_count')
+                        ? spt_render_pdf_page_count($tempPdf)
+                        : spt_pdf_page_count($tempPdf);
+                }
                 if ($sptPageCount > 0) {
                     header('X-SPT-Page-Count: ' . $sptPageCount);
+                }
+                if ($usedMethod !== '') {
+                    header('X-SPT-Render: ' . $usedMethod);
+                }
+                if ($layout_settings !== null) {
+                    header('X-SPT-Layout: ' . spt_layout_header_encode($layout_settings));
+                }
+                if ($fit_report !== null) {
+                    header('X-SPT-Fit-Ratio: ' . number_format((float)$fit_report['ratio'], 2, '.', ''));
+                    header('X-SPT-Fit-Pages: ' . (int)($fit_report['pages'] ?? 0));
                 }
                 if ($inlinePdf) {
                     header('Content-Disposition: inline; filename="Surat_Tugas_' . preg_replace('/[^a-zA-Z0-9\-_]/', '_', $surat['nomor_surat']) . '.pdf"');
@@ -4541,6 +5007,12 @@ Settings::setTempDir($tempDir);
                 header('Content-Length: ' . filesize($tempPdf));
                 readfile($tempPdf);
                 @unlink($tempPdf);
+                if ($fit_report !== null && !empty($fit_report['docx'])) {
+                    @rmdir(dirname($fit_report['docx']));
+                }
+                if (function_exists('spt_render_word_quit')) {
+                    spt_render_word_quit();
+                }
             } catch (Exception $pdfEx) {
                 if ($tempPdf && file_exists($tempPdf)) @unlink($tempPdf);
                 throw $pdfEx;
