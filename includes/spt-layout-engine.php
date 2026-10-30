@@ -438,6 +438,21 @@ function spt_le_row_zero_paragraph_spacing(DOMElement $row, DOMDocument $doc)
     }
 }
 
+function spt_le_paragraph_is_blank(DOMElement $paragraph)
+{
+    $ns = spt_le_ns();
+    foreach ($paragraph->getElementsByTagNameNS($ns, 't') as $text) {
+        if (trim((string)$text->nodeValue) !== '') {
+            return false;
+        }
+    }
+    if ($paragraph->getElementsByTagNameNS($ns, 'drawing')->length > 0
+        || $paragraph->getElementsByTagNameNS($ns, 'pict')->length > 0) {
+        return false;
+    }
+    return true;
+}
+
 function spt_le_collapse_paragraph(DOMElement $paragraph, DOMDocument $doc)
 {
     $ns = spt_le_ns();
@@ -1133,24 +1148,41 @@ function spt_le_apply(DOMDocument $doc, array $settings)
             spt_le_unit_set_margins($units[$i], $doc, $unitTop, $unitBottom);
         }
         foreach ($content as $i) {
+            if ($units[$i]['kind'] === 'row') {
+                // Tinggi baris judul/nomor tidak boleh mengunci jarak: biarkan isi menentukan.
+                spt_le_row_ensure_height($units[$i]['node'], $doc, 0, 'atLeast');
+            }
             $paragraphs = $units[$i]['kind'] === 'row'
                 ? $units[$i]['node']->getElementsByTagNameNS(spt_le_ns(), 'p')
                 : [$units[$i]['node']];
             foreach ($paragraphs as $paragraph) {
+                if (spt_le_paragraph_is_blank($paragraph)) {
+                    spt_le_collapse_paragraph($paragraph, $doc);
+                    continue;
+                }
                 $spacing = spt_le_spacing($paragraph, $doc);
+                // Hanya ukuran pada run berisi teks; w:sz di w:pPr/w:rPr milik penanda paragraf.
                 $maxSize = 0;
-                foreach ($paragraph->getElementsByTagNameNS(spt_le_ns(), 'sz') as $sz) {
-                    $maxSize = max($maxSize, (int)$sz->getAttributeNS(spt_le_ns(), 'val'));
+                foreach ($paragraph->getElementsByTagNameNS(spt_le_ns(), 'r') as $run) {
+                    if ($run->getElementsByTagNameNS(spt_le_ns(), 't')->length === 0) {
+                        continue;
+                    }
+                    $rPr = spt_le_child($run, 'rPr');
+                    $sz = $rPr ? spt_le_child($rPr, 'sz') : null;
+                    if ($sz) {
+                        $maxSize = max($maxSize, (int)$sz->getAttributeNS(spt_le_ns(), 'val'));
+                    }
                 }
                 if ($maxSize <= 0) {
-                    $maxSize = 24;
+                    $maxSize = max(24, (int)round($targetHalfPoints));
                 }
+                // lineRule=exact: w:line dibaca sebagai twips, bukan 240-an baris.
                 $lineTwips = (int)round(($maxSize / 2) * $headingMultiplier * 20);
                 if ($sameHeading) {
                     $lineTwips += $nomorGapTwips;
                 }
                 $spacing->setAttributeNS(spt_le_ns(), 'w:line', (string)$lineTwips);
-                $spacing->setAttributeNS(spt_le_ns(), 'w:lineRule', 'auto');
+                $spacing->setAttributeNS(spt_le_ns(), 'w:lineRule', 'exact');
             }
         }
     }
