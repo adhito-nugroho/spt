@@ -69,16 +69,19 @@ echo.
 echo [2/3] Mengunduh dan menimpa update ke server...
 echo *(Jika diminta password SSH, masukkan password akun server)*
 echo.
+echo CATATAN: Word di server akan ditutup otomatis agar file template tidak terkunci.
+echo.
 
 set "REPO_URL=https://github.com/adhito-nugroho/spt.git"
 
-:: Sebelum reset, bersihkan hal yang membuat unlink .docx gagal:
-:: - hentikan Word (sisa konversi PDF) yang mengunci file template
-:: - beri jeda singkat agar handle file dilepas Windows
+:: Sebelum reset, bersihkan hal yang membuat unlink .docx gagal.
+:: PATH SSH di server tidak selalu memuat System32, jadi taskkill/attrib
+:: dipanggil dengan path lengkap (%SystemRoot% di-escape agar dieksekusi di server).
+:: - hentikan Word yang mengunci file template
 :: - hapus atribut read-only/system/hidden pada template
-:: - hapus file owner Word (~$*.docx) dan sisa lock git
+:: - hapus sisa lock git
 :: - 'ver >nul' di akhir memastikan blok cleanup selalu dianggap sukses
-ssh -p %SERVER_PORT% %SERVER_USER%@%SERVER_IP% "%REMOTE_GIT% config --global --add safe.directory %REMOTE_DIR:\=/% && cd /d %REMOTE_DIR% && (taskkill /F /T /IM WINWORD.EXE >nul 2>&1 & ping -n 3 127.0.0.1 >nul & attrib -R -S -H assets\templates\*.* /S >nul 2>&1 & del /F /Q /AH assets\templates\~$*.docx >nul 2>&1 & del /F /Q .git\index.lock >nul 2>&1 & ver >nul) && (%REMOTE_GIT% remote add origin %REPO_URL% 2>nul || %REMOTE_GIT% remote set-url origin %REPO_URL%) && %REMOTE_GIT% fetch origin %BRANCH% && %REMOTE_GIT% reset --hard origin/%BRANCH% < nul"
+ssh -p %SERVER_PORT% %SERVER_USER%@%SERVER_IP% "%REMOTE_GIT% config --global --add safe.directory %REMOTE_DIR:\=/% && cd /d %REMOTE_DIR% && (%%SystemRoot%%\System32\taskkill.exe /F /T /IM WINWORD.EXE >nul 2>nul & %%SystemRoot%%\System32\attrib.exe -R -S -H assets\templates\*.* /S >nul 2>nul & %%SystemRoot%%\System32\attrib.exe -R -S -H .git\index >nul 2>nul & del /F /Q .git\index.lock >nul 2>nul & ver >nul) && (%REMOTE_GIT% remote add origin %REPO_URL% 2>nul || %REMOTE_GIT% remote set-url origin %REPO_URL%) && %REMOTE_GIT% fetch origin %BRANCH% && %REMOTE_GIT% reset --hard origin/%BRANCH% < nul"
 
 if errorlevel 1 (
     echo.
