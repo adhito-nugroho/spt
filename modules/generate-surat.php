@@ -446,6 +446,117 @@ function spt_layout_load_template_settings($pdo, $templateId)
     return spt_layout_normalize_stored_settings($decoded);
 }
 
+/**
+ * Hapus blok baris pegawai ke-(maxPegawai+1) dan seterusnya dari DOCX.
+ * Template "1-3 pegawai" memuat tiga blok pegawai (nama/nip/pangkat/jabatan);
+ * saat surat hanya berisi 1 atau 2 pegawai, blok sisa dibuang agar tidak
+ * meninggalkan baris kosong. Mengembalikan true bila ada baris yang dihapus.
+ */
+function spt_template_trim_employee_blocks($docxPath, $maxPegawai)
+{
+    $maxPegawai = (int)$maxPegawai;
+    if ($maxPegawai >= 3 || $maxPegawai < 1 || !class_exists('ZipArchive')) {
+        return false;
+    }
+
+    $zip = new ZipArchive();
+    if ($zip->open($docxPath) !== true) {
+        return false;
+    }
+    $xml = $zip->getFromName('word/document.xml');
+    $zip->close();
+    if (!is_string($xml) || $xml === '') {
+        return false;
+    }
+
+    $doc = new DOMDocument('1.0', 'UTF-8');
+    if (!@$doc->loadXML($xml)) {
+        return false;
+    }
+    $xpath = new DOMXPath($doc);
+    $xpath->registerNamespace('w', 'http://schemas.openxmlformats.org/wordprocessingml/2006/main');
+
+    $rowText = static function (DOMElement $tr) use ($xpath) {
+        $text = '';
+        foreach ($xpath->query('.//w:t', $tr) as $node) {
+            $text .= $node->textContent;
+        }
+        return $text;
+    };
+
+    $changed = false;
+    for ($n = 3; $n > $maxPegawai; $n--) {
+        $rows = [];
+        $last = null;
+        foreach ($xpath->query('//w:tbl/w:tr') as $tr) {
+            if (!($tr instanceof DOMElement)) {
+                continue;
+            }
+            $text = $rowText($tr);
+            if (!preg_match('/\$\{(?:nama|nip|pangkat|jabatan)' . $n . '\}/u', $text)) {
+                continue;
+            }
+            $rows[] = $tr;
+            if (stripos($text, '${jabatan' . $n . '}') !== false) {
+                $last = $tr;
+            }
+        }
+        if (!$rows) {
+            continue;
+        }
+
+        // Baris kosong tepat setelah blok ini adalah pemisah antar-pegawai.
+        $spacer = $last ? $last->nextSibling : null;
+        while ($spacer && !($spacer instanceof DOMElement)) {
+            $spacer = $spacer->nextSibling;
+        }
+
+        foreach ($rows as $tr) {
+            $tr->parentNode->removeChild($tr);
+            $changed = true;
+        }
+        if ($spacer instanceof DOMElement && $spacer->localName === 'tr' && trim($rowText($spacer)) === '') {
+            $spacer->parentNode->removeChild($spacer);
+        }
+    }
+
+    if (!$changed) {
+        return false;
+    }
+
+    $zip = new ZipArchive();
+    if ($zip->open($docxPath) !== true) {
+        return false;
+    }
+    $zip->addFromString('word/document.xml', $doc->saveXML());
+    $zip->close();
+    return true;
+}
+
+/**
+ * Salin template ke file sementara lalu pangkas blok pegawai berlebih.
+ * Return path salinan, atau null bila template tidak perlu/tidak bisa dipangkas.
+ */
+function spt_template_prepare_for_count($templatePath, $jumlahPegawai)
+{
+    if ((int)$jumlahPegawai >= 3) {
+        return null;
+    }
+    $tmpDir = dirname(__DIR__) . DIRECTORY_SEPARATOR . 'tmp';
+    if (!is_dir($tmpDir)) {
+        @mkdir($tmpDir, 0755, true);
+    }
+    $copy = $tmpDir . DIRECTORY_SEPARATOR . 'spt_trim_' . uniqid() . '.docx';
+    if (!@copy($templatePath, $copy)) {
+        return null;
+    }
+    if (spt_template_trim_employee_blocks($copy, $jumlahPegawai)) {
+        return $copy;
+    }
+    @unlink($copy);
+    return null;
+}
+
 function spt_layout_mm_to_twips($mm)
 {
     return (int)round(((float)$mm) * 1440 / 25.4);
@@ -2484,22 +2595,16 @@ try {
         die("Surat tugas tidak memiliki pegawai yang ditugaskan.");
     }
 
-    // Tentukan kategori template berdasarkan jumlah pegawai
-    // Logika: 1 pegawai -> 1_pegawai, 2 pegawai -> 2_pegawai, 3 pegawai -> 3_pegawai, 4+ -> banyak_pegawai
-    $kategori_template = 'banyak_pegawai'; // default untuk 4+ pegawai
+    // Tentukan kategori template berdasarkan jumlah pegawai.
+    // Satu template kecil dipakai untuk 1-3 pegawai (baris pegawai berlebih
+    // dipangkas otomatis), dan satu template banyak untuk 4+ pegawai.
+    $kategori_template = 'banyak_pegawai';
     $kategori_label = 'Banyak Pegawai (4+ pegawai)';
-    
-    if ($jumlah_pegawai == 1) {
+
+    if ($jumlah_pegawai <= 3) {
         $kategori_template = '1_pegawai';
-        $kategori_label = '1 Pegawai';
-    } elseif ($jumlah_pegawai == 2) {
-        $kategori_template = '2_pegawai';
-        $kategori_label = '2 Pegawai';
-    } elseif ($jumlah_pegawai == 3) {
-        $kategori_template = '3_pegawai';
-        $kategori_label = '3 Pegawai';
+        $kategori_label = '1–3 Pegawai';
     }
-    // else: tetap menggunakan banyak_pegawai untuk 4+ pegawai
 
     // Tentukan tipe surat (umum/penyuluh)
     $tipe_surat = isset($surat['tipe_surat']) ? $surat['tipe_surat'] : 'umum';
@@ -2983,12 +3088,20 @@ try {
     }
 
     // Load template dengan error handling yang lebih spesifik
+    $template_trimmed_copy = null;
     try {
         // Pastikan ZipArchive extension tersedia
         if (!class_exists('ZipArchive')) {
             throw new Exception('ZipArchive extension tidak tersedia. Silakan aktifkan extension zip di PHP.');
         }
         
+        // Template 1-3 pegawai berisi tiga blok pegawai; pangkas blok yang
+        // tidak terpakai sebelum template dibaca PHPWord.
+        $template_trimmed_copy = spt_template_prepare_for_count($template_path, $jumlah_pegawai);
+        if ($template_trimmed_copy !== null) {
+            $template_path = $template_trimmed_copy;
+        }
+
         $templateProcessor = new TemplateProcessor($template_path);
         
         // Verifikasi akhir: Pastikan template yang digunakan sesuai kategori
@@ -4922,6 +5035,10 @@ foreach ($tempCandidates as $candidate) {
 Settings::setTempDir($tempDir);
     $tempDocx = $tempDir . DIRECTORY_SEPARATOR . 'spt_' . uniqid() . '.docx';
     $templateProcessor->saveAs($tempDocx);
+    if (!empty($template_trimmed_copy)) {
+        @unlink($template_trimmed_copy);
+        $template_trimmed_copy = null;
+    }
     spt_fix_docx_typos($tempDocx);
     spt_normalize_docx($tempDocx);
 

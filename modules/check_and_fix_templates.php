@@ -141,15 +141,13 @@ echo "<hr>";
 
 // 3. CEK KATEGORI YANG HILANG
 echo "<h3>3️⃣ Analisa Kategori Template</h3>";
-$required_categories = ['1_pegawai', '2_pegawai', '3_pegawai', 'banyak_pegawai'];
+$required_categories = ['1_pegawai', 'banyak_pegawai'];
 $existing_categories = array_column($templates_db, 'kategori_template');
 $missing_categories = array_diff($required_categories, $existing_categories);
 
 $kategori_labels = [
-    '1_pegawai' => '1 Pegawai',
-    '2_pegawai' => '2 Pegawai',
-    '3_pegawai' => '3 Pegawai',
-    'banyak_pegawai' => 'Banyak Pegawai (4+ pegawai)'
+    '1_pegawai' => '1–3 Pegawai (1 halaman)',
+    'banyak_pegawai' => 'Banyak Pegawai (4+, 2 halaman)'
 ];
 
 echo "<table>";

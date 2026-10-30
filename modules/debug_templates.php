@@ -278,12 +278,10 @@ header('Content-Type: text/html; charset=utf-8');
     
     // CEK KATEGORI
     echo "<h2>3️⃣ Analisa Kategori</h2>";
-    $required = ['1_pegawai', '2_pegawai', '3_pegawai', 'banyak_pegawai'];
+    $required = ['1_pegawai', 'banyak_pegawai'];
     $labels = [
-        '1_pegawai' => '1 Pegawai',
-        '2_pegawai' => '2 Pegawai', 
-        '3_pegawai' => '3 Pegawai',
-        'banyak_pegawai' => 'Banyak Pegawai (4+ pegawai)'
+        '1_pegawai' => '1–3 Pegawai (1 halaman)',
+        'banyak_pegawai' => 'Banyak Pegawai (4+, 2 halaman)'
     ];
     
     try {

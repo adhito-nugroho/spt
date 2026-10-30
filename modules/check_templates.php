@@ -154,12 +154,8 @@ foreach ($jumlah_pegawai_tests as $jumlah) {
     
     // Tentukan kategori
     $kategori_template = 'banyak_pegawai';
-    if ($jumlah == 1) {
+    if ($jumlah <= 3) {
         $kategori_template = '1_pegawai';
-    } elseif ($jumlah == 2) {
-        $kategori_template = '2_pegawai';
-    } elseif ($jumlah == 3) {
-        $kategori_template = '3_pegawai';
     }
     
     echo "<p>Kategori dicari: <strong>{$kategori_template}</strong></p>";

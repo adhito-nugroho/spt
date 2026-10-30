@@ -144,7 +144,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['action']) && $_POST['a
             throw new Exception('Nama template harus diisi.');
         }
 
-        $allowed_kategori = ['1_pegawai', '2_pegawai', '3_pegawai', 'banyak_pegawai'];
+        $allowed_kategori = ['1_pegawai', 'banyak_pegawai'];
         if (!in_array($kategori_template, $allowed_kategori)) {
             throw new Exception('Kategori template tidak valid.');
         }
@@ -294,7 +294,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['action']) && $_POST['a
 
         // Validasi kategori template
         $kategori_template = isset($_POST['kategori_template']) ? $_POST['kategori_template'] : 'banyak_pegawai';
-        $allowed_kategori = ['1_pegawai', '2_pegawai', '3_pegawai', 'banyak_pegawai'];
+        $allowed_kategori = ['1_pegawai', 'banyak_pegawai'];
         if (!in_array($kategori_template, $allowed_kategori)) {
             throw new Exception('Kategori template tidak valid.');
         }
@@ -392,7 +392,7 @@ try {
         }
     }
     
-    $stmt = $pdo->query("SELECT * FROM templates ORDER BY kategori_template, tipe_surat, berlaku_mulai IS NULL DESC, berlaku_mulai ASC, is_default DESC, created_at DESC");
+    $stmt = $pdo->query("SELECT * FROM templates WHERE kategori_template IN ('1_pegawai', 'banyak_pegawai') AND tipe_surat IN ('umum', 'penyuluh') ORDER BY kategori_template, tipe_surat, is_default DESC, created_at DESC");
     $templates = $stmt->fetchAll();
 } catch (PDOException $e) {
     // Jika tabel belum ada, buat tabel
@@ -419,22 +419,6 @@ try {
         $templates = [];
     }
 }
-
-// Tanggal cutoff PAPBD = Berlaku Mulai paling awal di antara template yang ada.
-// Dipakai agar seluruh petunjuk di halaman ini mengikuti tanggal yang benar-benar
-// di-set saat upload (mis. 10/10/2026), bukan tanggal yang di-hardcode.
-// null = belum ada template dasar baru yang di-upload.
-$cutoff_papbd = null;
-try {
-    $stmt_cut = $pdo->query("SELECT MIN(berlaku_mulai) AS cutoff FROM templates WHERE berlaku_mulai IS NOT NULL");
-    $row_cut = $stmt_cut ? $stmt_cut->fetch() : null;
-    if ($row_cut && !empty($row_cut['cutoff'])) {
-        $cutoff_papbd = $row_cut['cutoff'];
-    }
-} catch (PDOException $e) {
-    $cutoff_papbd = null;
-}
-$cutoff_papbd_label = $cutoff_papbd ? date('d/m/Y', strtotime($cutoff_papbd)) : null;
 ?>
 
 <div class="space-y-6">
@@ -454,22 +438,18 @@ $cutoff_papbd_label = $cutoff_papbd ? date('d/m/Y', strtotime($cutoff_papbd)) : 
             <i class='bx bx-info-circle text-blue-600 text-xl mt-0.5'></i>
             <div class="text-sm">
                 <p class="font-semibold text-blue-950 mb-1">Informasi Template</p>
-                <p class="text-blue-800">Upload template Word (.docx atau .doc) yang akan digunakan untuk generate surat tugas. Pilih kategori template sesuai jumlah pegawai dan <strong>tipe surat</strong> (Umum untuk ASN biasa, Penyuluh untuk penyuluh kehutanan). Template harus menggunakan placeholder seperti <code class="bg-blue-100 px-1 rounded">${nomor_surat}</code>, <code class="bg-blue-100 px-1 rounded">${tanggal_surat}</code>, dll. Sistem akan otomatis memilih template yang sesuai saat generate surat.</p>
+                <p class="text-blue-800">Upload template Word (.docx atau .doc) yang akan digunakan untuk generate surat tugas. Cukup tersedia <strong>dua kategori</strong> per tipe surat: <strong>1–3 Pegawai</strong> (format 1 halaman) dan <strong>Banyak Pegawai</strong> (naskah halaman 1 + lampiran daftar pegawai di halaman 2). Tipe surat: Umum untuk ASN biasa, Penyuluh untuk penyuluh kehutanan. Template harus memakai placeholder seperti <code class="bg-blue-100 px-1 rounded">${nomor_surat}</code>, <code class="bg-blue-100 px-1 rounded">${tanggal_surat}</code>, dll. Sistem memilih template otomatis sesuai jumlah pegawai dan tipe surat.</p>
             </div>
         </div>
     </div>
 
-    <!-- Info Box PAPBD / Versi Template -->
+    <!-- Info Box Aturan Pemilihan Template -->
     <div class="card p-4 bg-amber-50/60 border-amber-200 text-amber-900">
         <div class="flex items-start gap-3">
-            <i class='bx bx-calendar-check text-amber-600 text-xl mt-0.5'></i>
+            <i class='bx bx-git-merge text-amber-600 text-xl mt-0.5'></i>
             <div class="text-sm">
-                <p class="font-semibold text-amber-950 mb-1">Template Dasar Lama vs Dasar Baru (PAPBD<?php echo $cutoff_papbd_label ? ' — berlaku mulai ' . $cutoff_papbd_label : ''; ?>)</p>
-                <?php if ($cutoff_papbd_label): ?>
-                <p class="text-amber-800">Surat tugas dengan <strong>tanggal surat sebelum <?php echo $cutoff_papbd_label; ?></strong> otomatis memakai template <strong>lama</strong> (kolom Berlaku Mulai dikosongkan). Surat dengan <strong>tanggal surat <?php echo $cutoff_papbd_label; ?> atau sesudahnya</strong> otomatis memakai template <strong>dasar baru PAPBD</strong> (tanggal ini diambil dari kolom Berlaku Mulai paling awal di tabel di bawah — jika tanggal PAPBD berubah, cukup upload/revisi template dengan Berlaku Mulai yang baru). Template lama jangan dihapus agar arsip surat lama tetap bisa di-generate ulang. Setiap kombinasi kategori + tipe + masa berlaku memiliki satu template default masing-masing.</p>
-                <?php else: ?>
-                <p class="text-amber-800">Surat tugas otomatis memakai template sesuai <strong>tanggal suratnya</strong>: template dengan kolom Berlaku Mulai yang dikosongkan adalah template <strong>lama</strong> (dipakai surat sebelum masa PAPBD). Untuk memberlakukan <strong>dasar baru PAPBD</strong>, upload file template baru dan isi <strong>Berlaku Mulai</strong> dengan tanggal berlakunya PAPBD — surat bertanggal sama/lewat tanggal itu otomatis memakai template baru. Template lama jangan dihapus agar arsip surat lama tetap bisa di-generate ulang. Setiap kombinasi kategori + tipe + masa berlaku memiliki satu template default masing-masing.</p>
-                <?php endif; ?>
+                <p class="font-semibold text-amber-950 mb-1">Aturan Pemilihan Template</p>
+                <p class="text-amber-800">Surat dengan <strong>1–3 pegawai</strong> memakai template kategori <strong>1–3 Pegawai</strong> dan harus muat 1 halaman; baris pegawai yang tidak terpakai dihapus otomatis. Surat dengan <strong>4 pegawai atau lebih</strong> memakai template <strong>Banyak Pegawai</strong>: halaman 1 berisi naskah surat, halaman 2 berisi lampiran daftar pegawai. Setiap tipe surat (Umum/Penyuluh) hanya memerlukan satu template default untuk masing-masing kategori.</p>
             </div>
         </div>
     </div>
@@ -503,10 +483,8 @@ $cutoff_papbd_label = $cutoff_papbd ? date('d/m/Y', strtotime($cutoff_papbd)) : 
                                 <td>
                                     <?php
                                     $kategori_labels = [
-                                        '1_pegawai' => '1 Pegawai',
-                                        '2_pegawai' => '2 Pegawai',
-                                        '3_pegawai' => '3 Pegawai',
-                                        'banyak_pegawai' => 'Banyak Pegawai'
+                                        '1_pegawai' => '1–3 Pegawai (1 halaman)',
+                                        'banyak_pegawai' => 'Banyak Pegawai (4+, 2 halaman)'
                                     ];
                                     $kategori = isset($template['kategori_template']) ? $template['kategori_template'] : 'banyak_pegawai';
                                     $kategori_label = isset($kategori_labels[$kategori]) ? $kategori_labels[$kategori] : 'Banyak Pegawai';
@@ -643,10 +621,8 @@ $cutoff_papbd_label = $cutoff_papbd ? date('d/m/Y', strtotime($cutoff_papbd)) : 
                             <label class="block text-sm font-medium text-slate-700 mb-1">Kategori Template <span class="text-red-500">*</span></label>
                             <select name="kategori_template" required class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none">
                                 <option value="">Pilih Kategori</option>
-                                <option value="1_pegawai">1 Pegawai</option>
-                                <option value="2_pegawai">2 Pegawai</option>
-                                <option value="3_pegawai">3 Pegawai</option>
-                                <option value="banyak_pegawai">Banyak Pegawai (4+ pegawai)</option>
+                                <option value="1_pegawai">1–3 Pegawai (1 halaman)</option>
+                                <option value="banyak_pegawai">Banyak Pegawai (4+, 2 halaman + lampiran)</option>
                             </select>
                             <p class="text-xs text-slate-500 mt-1">Pilih kategori sesuai jumlah pegawai yang akan menggunakan template ini</p>
                         </div>
@@ -661,7 +637,7 @@ $cutoff_papbd_label = $cutoff_papbd ? date('d/m/Y', strtotime($cutoff_papbd)) : 
                         <div>
                             <label class="block text-sm font-medium text-slate-700 mb-1">Berlaku Mulai <span class="text-slate-400 font-normal">(opsional)</span></label>
                             <input type="date" name="berlaku_mulai" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none">
-                            <p class="text-xs text-slate-500 mt-1">Kosongkan untuk template <strong>lama</strong> (berlaku untuk semua tanggal). Isi tanggal berlakunya <strong>dasar baru PAPBD</strong><?php echo $cutoff_papbd ? ' (template PAPBD yang sudah ada memakai <strong>' . date('Y-m-d', strtotime($cutoff_papbd)) . '</strong>)' : ''; ?> — otomatis dipakai surat bertanggal sama/lebih baru.</p>
+                            <p class="text-xs text-slate-500 mt-1">Opsional. Kosongkan agar template berlaku untuk semua tanggal, atau isi tanggal mulai berlakunya template ini.</p>
                         </div>
                         <div>
                             <label class="block text-sm font-medium text-slate-700 mb-1">File Template</label>
@@ -726,10 +702,8 @@ $cutoff_papbd_label = $cutoff_papbd ? date('d/m/Y', strtotime($cutoff_papbd)) : 
                         <div>
                             <label class="block text-sm font-medium text-slate-700 mb-1">Kategori Template <span class="text-red-500">*</span></label>
                             <select name="kategori_template" id="edit-template-kategori" required class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none">
-                                <option value="1_pegawai">1 Pegawai</option>
-                                <option value="2_pegawai">2 Pegawai</option>
-                                <option value="3_pegawai">3 Pegawai</option>
-                                <option value="banyak_pegawai">Banyak Pegawai (4+ pegawai)</option>
+                                <option value="1_pegawai">1–3 Pegawai (1 halaman)</option>
+                                <option value="banyak_pegawai">Banyak Pegawai (4+, 2 halaman + lampiran)</option>
                             </select>
                         </div>
                         <div>
@@ -742,7 +716,7 @@ $cutoff_papbd_label = $cutoff_papbd ? date('d/m/Y', strtotime($cutoff_papbd)) : 
                         <div>
                             <label class="block text-sm font-medium text-slate-700 mb-1">Berlaku Mulai <span class="text-slate-400 font-normal">(opsional)</span></label>
                             <input type="date" name="berlaku_mulai" id="edit-template-berlaku" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none">
-                            <p class="text-xs text-slate-500 mt-1">Kosongkan untuk template <strong>lama</strong>. Isi tanggal berlakunya <strong>dasar baru PAPBD</strong><?php echo $cutoff_papbd ? ' (yang sudah ada memakai <strong>' . date('Y-m-d', strtotime($cutoff_papbd)) . '</strong>)' : ''; ?>.</p>
+                            <p class="text-xs text-slate-500 mt-1">Opsional. Kosongkan agar berlaku untuk semua tanggal.</p>
                         </div>
                         <div>
                             <label class="block text-sm font-medium text-slate-700 mb-1">Ganti File Template</label>
