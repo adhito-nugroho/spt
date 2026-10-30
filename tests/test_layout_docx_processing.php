@@ -2,7 +2,7 @@
 define('SPT_TEST_MODE', true);
 require_once __DIR__ . '/../modules/generate-surat.php';
 
-$sourceDocx = __DIR__ . '/../assets/templates/1766636680_template_satu_orang.docx';
+$sourceDocx = __DIR__ . '/../assets/templates/1777295593_1_orang.docx';
 if (!file_exists($sourceDocx)) {
     echo "SKIP: Template not found\n";
     exit(0);
@@ -35,9 +35,15 @@ $settings['ttd_space_height'] = 75;
 $settings['ttd_name_nip_spacing'] = 8;
 $settings['lock_ttd'] = 1;
 
-$result = spt_layout_apply_to_docx($tmpDocx, $settings);
+$report = null;
+$result = spt_layout_apply_to_docx($tmpDocx, $settings, $report);
 if (!$result) {
     fwrite(STDERR, "FAIL: spt_layout_apply_to_docx returned false\n");
+    @unlink($tmpDocx);
+    exit(1);
+}
+if (!is_array($report) || (isset($report['units']) && (int)$report['units'] <= 0)) {
+    fwrite(STDERR, "FAIL: Template has no recognizable layout blocks\n");
     @unlink($tmpDocx);
     exit(1);
 }

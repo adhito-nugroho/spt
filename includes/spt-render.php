@@ -31,34 +31,47 @@ function spt_render_tmp_dir()
     return $dir = sys_get_temp_dir();
 }
 
+function &spt_render_word_state()
+{
+    static $state = ['word' => null, 'failed' => false, 'cleanup' => false];
+    return $state;
+}
+
 function spt_render_word(&$error = null)
 {
-    static $word = null;
-    static $failed = false;
-    if ($word !== null) {
-        return $word;
+    $state = &spt_render_word_state();
+    if ($state['word'] !== null) {
+        return $state['word'];
     }
-    if ($failed || !class_exists('COM')) {
-        $error = $failed ? 'Word COM gagal diinisialisasi' : 'Ekstensi COM tidak aktif';
+    if ($state['failed'] || !class_exists('COM')) {
+        $error = $state['failed'] ? 'Word COM gagal diinisialisasi' : 'Ekstensi COM tidak aktif';
         return null;
     }
     try {
         $word = new COM('Word.Application');
         $word->Visible = false;
         $word->DisplayAlerts = 0;
+        $state['word'] = $word;
+        if (!$state['cleanup']) {
+            // Word harus selalu ditutup, termasuk saat request berakhir karena
+            // error/timeout, agar proses WINWORD tidak menumpuk di server.
+            $state['cleanup'] = true;
+            register_shutdown_function('spt_render_word_quit');
+        }
         return $word;
     } catch (Throwable $e) {
-        $failed = true;
+        $state['failed'] = true;
         $error = $e->getMessage();
-        $word = null;
+        $state['word'] = null;
         return null;
     }
 }
 
 function spt_render_word_quit()
 {
-    $error = null;
-    $word = spt_render_word($error);
+    $state = &spt_render_word_state();
+    $word = $state['word'];
+    $state['word'] = null;
     if ($word === null) {
         return;
     }

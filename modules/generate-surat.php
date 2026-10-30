@@ -1297,14 +1297,16 @@ function spt_layout_set_page_margins(DOMDocument $document, array $settings)
  * Terapkan semua parameter layout ke file DOCX (in-place).
  * Dipakai untuk pipeline Word COM & LibreOffice agar hasil PDF ikut berubah.
  */
-function spt_layout_apply_to_docx($docxPath, array $settings)
+function spt_layout_apply_to_docx($docxPath, array $settings, &$report = null)
 {
+    $report = null;
     $enginePath = dirname(__DIR__) . DIRECTORY_SEPARATOR . 'includes' . DIRECTORY_SEPARATOR . 'spt-layout-engine.php';
     if (is_file($enginePath)) {
         require_once $enginePath;
         if (function_exists('spt_le_apply_docx')) {
-            $report = spt_le_apply_docx($docxPath, $settings);
-            if ($report !== false) {
+            $engineReport = spt_le_apply_docx($docxPath, $settings);
+            if ($engineReport !== false) {
+                $report = is_array($engineReport) ? $engineReport + ['engine' => 'engine'] : ['engine' => 'engine'];
                 return true;
             }
         }
@@ -1820,6 +1822,7 @@ function spt_layout_apply_to_docx($docxPath, array $settings)
             $zip->addFromString('word/styles.xml', $styles->saveXML());
         }
         $zip->close();
+        $report = ['engine' => 'legacy'];
         return true;
     } catch (Throwable $e) {
         error_log('Layout adjuster DOCX error: ' . $e->getMessage());
@@ -3283,6 +3286,8 @@ main > .max-w-7xl { max-width: none !important; margin: 0 !important; height: 10
 .spt-status-card { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 10px; padding: 9px 11px; border-radius: 10px; border: 1px solid #e2e8f0; background: #f8fafc; }
 .spt-status-card.is-fit { border-color: #a7f3d0; background: #ecfdf5; }
 .spt-status-card.is-over { border-color: #fde68a; background: #fffbeb; }
+.spt-status-card.is-layout-warning { border-color: #fca5a5; background: #fef2f2; }
+.spt-status-card.is-layout-warning .spt-status-hint { color: #b91c1c; white-space: normal; }
 .spt-status-main { display: flex; align-items: baseline; gap: 7px; min-width: 0; }
 .spt-status-count { font-size: 19px; font-weight: 800; line-height: 1; color: #0f172a; letter-spacing: -.02em; }
 .spt-status-card.is-fit .spt-status-count { color: #047857; }
@@ -3700,8 +3705,10 @@ main > .max-w-7xl { max-width: none !important; margin: 0 !important; height: 10
 </div>
 
 <script type="module">
-import * as pdfjs from '../assets/vendor/pdfjs/pdf.min.mjs';
-pdfjs.GlobalWorkerOptions.workerSrc = new URL('../assets/vendor/pdfjs/pdf.worker.min.mjs', import.meta.url).href;
+// Pakai ekstensi .js (isinya build ESM yang sama): banyak server tidak
+// memetakan .mjs ke text/javascript sehingga modul gagal dimuat.
+import * as pdfjs from '../assets/vendor/pdfjs/pdf.min.js';
+pdfjs.GlobalWorkerOptions.workerSrc = new URL('../assets/vendor/pdfjs/pdf.worker.min.js', import.meta.url).href;
 window.pdfjsLib = pdfjs;
 window.dispatchEvent(new Event('spt-pdfjs-ready'));
 </script>
@@ -3759,6 +3766,24 @@ window.dispatchEvent(new Event('spt-pdfjs-ready'));
     ];
     const DENSITY_LABELS = ['Longgar', 'Standar', 'Rapat', 'Sangat Rapat'];
     let currentDensity = null;
+    let previewBusy = false;
+    let previewRequestSeq = 0;
+    let autoApplyTimer = null;
+
+    // Pratinjau otomatis setelah slider dilepas, supaya perubahan langsung
+    // terlihat tanpa harus mencari tombol Terapkan.
+    function scheduleAutoApply(delay) {
+        if (autoApplyTimer) clearTimeout(autoApplyTimer);
+        autoApplyTimer = setTimeout(function () {
+            autoApplyTimer = null;
+            if (!isDirty()) return;
+            if (previewBusy) {
+                scheduleAutoApply(500);
+                return;
+            }
+            applyLayout();
+        }, delay || 650);
+    }
 
     const frame = document.getElementById('pdfPreviewFrame');
     const loading = document.getElementById('pdfPreviewLoading');
@@ -3904,6 +3929,7 @@ window.dispatchEvent(new Event('spt-pdfjs-ready'));
         const dirty = isDirty();
         if (applyBtn) {
             applyBtn.classList.toggle('is-dirty', dirty);
+            applyBtn.disabled = previewBusy || !dirty;
             const label = applyBtn.querySelector('[data-apply-label]');
             if (label) label.textContent = dirty ? 'Terapkan Perubahan • Ada Perubahan' : 'Terapkan Perubahan';
         }
@@ -3955,7 +3981,7 @@ window.dispatchEvent(new Event('spt-pdfjs-ready'));
         status.textContent = 'Kustom aktif — belum disimpan sebagai default';
     }
 
-    function updatePageBadge(count, method) {
+    function updatePageBadge(count, method, layoutStatus) {
         pageCount = (typeof count === 'number' && count > 0) ? count : null;
         if (method) renderMethod = method;
         if (pageBadge) {
@@ -3980,7 +4006,18 @@ window.dispatchEvent(new Event('spt-pdfjs-ready'));
             statusCard.classList.toggle('is-fit', pageCount === 1);
             statusCard.classList.toggle('is-over', pageCount !== null && pageCount > 1);
         }
-        if (statusHint) statusHint.textContent = renderMethod || 'Pratinjau PDF';
+        if (statusHint) {
+            if (layoutStatus === 'failed') {
+                statusHint.textContent = 'Tata letak gagal diterapkan — PDF memakai template asli';
+            } else if (layoutStatus === 'no-blocks') {
+                statusHint.textContent = 'Blok surat tidak dikenali — pengaturan jarak tidak berpengaruh';
+            } else {
+                statusHint.textContent = renderMethod || 'Pratinjau PDF';
+            }
+        }
+        if (statusCard) {
+            statusCard.classList.toggle('is-layout-warning', layoutStatus === 'failed' || layoutStatus === 'no-blocks');
+        }
         updatePresetState();
     }
 
@@ -4040,8 +4077,9 @@ window.dispatchEvent(new Event('spt-pdfjs-ready'));
     }
 
     function setApplyLoading(isLoading) {
+        previewBusy = !!isLoading;
         if (!applyBtn) return;
-        applyBtn.disabled = !!isLoading;
+        applyBtn.disabled = previewBusy || !isDirty();
         const spinner = applyBtn.querySelector('[data-apply-spinner]');
         if (spinner) spinner.classList.toggle('spt-hidden', !isLoading);
     }
@@ -4221,12 +4259,12 @@ window.dispatchEvent(new Event('spt-pdfjs-ready'));
         updatePageNav();
     }
 
-    async function showPdfBlob(blob, count, method) {
+    async function showPdfBlob(blob, count, method, layoutStatus) {
         if (currentBlobUrl) {
             try { URL.revokeObjectURL(currentBlobUrl); } catch (e) {}
         }
         currentBlobUrl = URL.createObjectURL(blob);
-        updatePageBadge(count > 0 ? count : null, method);
+        updatePageBadge(count > 0 ? count : null, method, layoutStatus);
         const lib = await pdfjsReady();
         if (!lib) {
             setViewerMode(false);
@@ -4293,8 +4331,9 @@ window.dispatchEvent(new Event('spt-pdfjs-ready'));
         }, 220);
     });
 
-    async function loadPreview(url, attempt) {
+    async function loadPreview(url, attempt, reqId) {
         attempt = attempt || 0;
+        if (!reqId) reqId = ++previewRequestSeq;
         showLoading(true);
         setApplyLoading(true);
         const sep = url.indexOf('?') === -1 ? '?' : '&';
@@ -4303,20 +4342,24 @@ window.dispatchEvent(new Event('spt-pdfjs-ready'));
                 cache: 'no-store',
                 credentials: 'same-origin'
             });
+            if (reqId !== previewRequestSeq) return false;
             const contentType = (response.headers.get('content-type') || '').toLowerCase();
             if (response.status === 503 && contentType.indexOf('application/json') !== -1) {
                 // Word sedang sibuk: coba lagi tanpa memuat halaman HTML di viewer.
                 if (attempt < 3) {
                     await new Promise(function (resolve) { setTimeout(resolve, 1200); });
-                    return loadPreview(url, attempt + 1);
+                    if (reqId !== previewRequestSeq) return false;
+                    return loadPreview(url, attempt + 1, reqId);
                 }
             }
             if (response.ok && contentType.indexOf('application/pdf') !== -1) {
                 const count = parseInt(response.headers.get('X-SPT-Page-Count') || '0', 10);
                 const method = response.headers.get('X-SPT-Render') || '';
+                const layoutStatus = (response.headers.get('X-SPT-Layout-Status') || '').toLowerCase();
                 const blob = await response.blob();
+                if (reqId !== previewRequestSeq) return false;
                 if (blob && blob.size > 0) {
-                    await showPdfBlob(blob, count, method);
+                    await showPdfBlob(blob, count, method, layoutStatus);
                     appliedState = Object.assign({}, state, { lock_ttd: state.lock_ttd ? 1 : 0 });
                     updateDirtyUi();
                     updateAccordionBadges();
@@ -4330,6 +4373,7 @@ window.dispatchEvent(new Event('spt-pdfjs-ready'));
             }
 
             // Bukan PDF: biarkan iframe menampilkan respons apa adanya.
+            if (reqId !== previewRequestSeq) return false;
             setViewerMode(false);
             if (frame) frame.src = url;
             showLoading(false);
@@ -4338,6 +4382,7 @@ window.dispatchEvent(new Event('spt-pdfjs-ready'));
             schedulePageCountRefresh(url);
             return false;
         } catch (error) {
+            if (reqId !== previewRequestSeq) return false;
             setViewerMode(false);
             if (frame) frame.src = url;
             showLoading(false);
@@ -4377,6 +4422,7 @@ window.dispatchEvent(new Event('spt-pdfjs-ready'));
         }
         currentDensity = null;
         markDirty();
+        scheduleAutoApply();
     }
 
     // Restore state: prioritas URL, lalu localStorage.
@@ -4431,6 +4477,7 @@ window.dispatchEvent(new Event('spt-pdfjs-ready'));
                 currentDensity = null;
                 markDirty();
             });
+            range.addEventListener('change', function () { scheduleAutoApply(); });
             range.addEventListener('dblclick', function () { resetKey(key); });
         }
 
@@ -4453,6 +4500,7 @@ window.dispatchEvent(new Event('spt-pdfjs-ready'));
                 if (range) range.value = value;
                 currentDensity = null;
                 markDirty();
+                scheduleAutoApply();
             });
             number.addEventListener('keydown', function (event) {
                 if (event.key === 'Enter') {
@@ -4475,6 +4523,7 @@ window.dispatchEvent(new Event('spt-pdfjs-ready'));
             if (numbers[key]) numbers[key].value = fmt(key, state[key]);
             currentDensity = null;
             markDirty();
+            scheduleAutoApply();
         });
     });
 
@@ -4487,12 +4536,18 @@ window.dispatchEvent(new Event('spt-pdfjs-ready'));
         lockCheckbox.addEventListener('change', function () {
             state.lock_ttd = lockCheckbox.checked ? 1 : 0;
             markDirty();
+            scheduleAutoApply();
         });
     }
 
     if (applyBtn) {
         applyBtn.addEventListener('click', function () {
-            if (!applyBtn.disabled) applyLayout();
+            if (applyBtn.disabled) return;
+            if (autoApplyTimer) {
+                clearTimeout(autoApplyTimer);
+                autoApplyTimer = null;
+            }
+            applyLayout();
         });
     }
 
@@ -4553,6 +4608,10 @@ window.dispatchEvent(new Event('spt-pdfjs-ready'));
 
     async function runFit() {
         active = true;
+        if (autoApplyTimer) {
+            clearTimeout(autoApplyTimer);
+            autoApplyTimer = null;
+        }
         const params = buildParams(true);
         params.set('fit', '1');
         showLoading(true);
@@ -4620,6 +4679,10 @@ window.dispatchEvent(new Event('spt-pdfjs-ready'));
 
     presetButtons.forEach(function (button) {
         button.addEventListener('click', function () {
+            if (autoApplyTimer) {
+                clearTimeout(autoApplyTimer);
+                autoApplyTimer = null;
+            }
             applyDensity(Number(button.dataset.density));
             syncUi();
             markDirty();
@@ -4640,6 +4703,10 @@ window.dispatchEvent(new Event('spt-pdfjs-ready'));
 
     if (resetBtn) {
         resetBtn.addEventListener('click', function () {
+            if (autoApplyTimer) {
+                clearTimeout(autoApplyTimer);
+                autoApplyTimer = null;
+            }
             state = Object.assign({}, templateDefaults, { lock_ttd: templateDefaults.lock_ttd ? 1 : 0 });
             active = hasSavedDefault;
             currentDensity = estimateDensity();
@@ -4850,6 +4917,7 @@ Settings::setTempDir($tempDir);
     // Salinan DOCX yang sudah disesuaikan layout, dipakai untuk unduhan Word
     // dan untuk Word COM/LibreOffice. File asli tetap dipakai fallback Dompdf.
     $layout_adjusted_docx = null;
+    $layout_apply_report = null;
     $pdf_source_docx = $tempDocx;
     $fit_report = null;
     if (($format === 'pdf' || $format === 'docx') && $layout_active && $layout_settings !== null) {
@@ -4861,18 +4929,21 @@ Settings::setTempDir($tempDir);
                 $layout_adjusted_docx = $fit_report['docx'];
                 $pdf_source_docx = $layout_adjusted_docx;
                 $layout_settings = $fit_report['settings'];
+                $layout_apply_report = ['engine' => 'fit'];
             }
         } else {
             $layout_adjusted_docx = $tempDir . DIRECTORY_SEPARATOR . 'spt_layout_' . uniqid() . '.docx';
             if (@copy($tempDocx, $layout_adjusted_docx)) {
-                if (spt_layout_apply_to_docx($layout_adjusted_docx, $layout_settings)) {
+                if (spt_layout_apply_to_docx($layout_adjusted_docx, $layout_settings, $layout_apply_report)) {
                     $pdf_source_docx = $layout_adjusted_docx;
                 } else {
                     @unlink($layout_adjusted_docx);
                     $layout_adjusted_docx = null;
+                    $layout_apply_report = null;
                 }
             } else {
                 $layout_adjusted_docx = null;
+                $layout_apply_report = null;
             }
         }
     }
@@ -5025,6 +5096,17 @@ Settings::setTempDir($tempDir);
                 }
                 if ($layout_settings !== null) {
                     header('X-SPT-Layout: ' . spt_layout_header_encode($layout_settings));
+                    // Diagnostik: beri tahu UI bila layout gagal diterapkan atau
+                    // template tidak punya blok yang bisa dikenali mesin layout.
+                    if ($layout_adjusted_docx === null) {
+                        header('X-SPT-Layout-Status: failed');
+                    } elseif ($layout_apply_report !== null) {
+                        $layoutBlocks = isset($layout_apply_report['units']) ? (int)$layout_apply_report['units'] : null;
+                        if ($layoutBlocks !== null) {
+                            header('X-SPT-Layout-Blocks: ' . $layoutBlocks);
+                        }
+                        header('X-SPT-Layout-Status: ' . ($layoutBlocks === 0 ? 'no-blocks' : 'applied'));
+                    }
                 }
                 if ($fit_report !== null) {
                     header('X-SPT-Fit-Ratio: ' . number_format((float)$fit_report['ratio'], 2, '.', ''));
