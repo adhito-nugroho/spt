@@ -244,7 +244,21 @@ function spt_render_fit($templateDocx, array $settings, $targetPages = 1)
         return $result;
     }
 
+    // Hapus semua percobaan kecuali kandidat yang dikembalikan, agar folder
+    // kerja solver tidak menumpuk file DOCX.
+    $purge = static function ($keep) use (&$files, $workDir) {
+        foreach ($files as $file) {
+            if ($keep === null || $file !== $keep) {
+                @unlink($file);
+            }
+        }
+        if ($keep === null) {
+            @rmdir($workDir);
+        }
+    };
+
     $ratios = [1.0, 0.94, 0.88, 0.84, 0.80, 0.76, 0.72];
+    $files = [];
     $best = null;      // kandidat paling rapat
     $leastCompressed = null; // kandidat paling longgar dengan halaman tersedikit
     foreach ($ratios as $ratio) {
@@ -257,12 +271,14 @@ function spt_render_fit($templateDocx, array $settings, $targetPages = 1)
             @unlink($file);
             continue;
         }
+        $files[] = $file;
         $pages = spt_render_measure_pages($file);
         if ($pages === null) {
             // Word tidak tersedia: berhenti di percobaan pertama.
             $result['settings'] = $candidate;
             $result['docx'] = $file;
             $result['ratio'] = $ratio;
+            $purge($file);
             return $result;
         }
         $result['measured'] = true;
@@ -273,15 +289,11 @@ function spt_render_fit($templateDocx, array $settings, $targetPages = 1)
             $result['pages'] = $pages;
             $result['docx'] = $file;
             $result['ratio'] = $ratio;
+            $purge($file);
             return $result;
         }
         if ($leastCompressed === null || $pages < $leastCompressed['pages']) {
-            if ($leastCompressed !== null && $leastCompressed['file'] !== $best['file']) {
-                @unlink($leastCompressed['file']);
-            }
             $leastCompressed = $candidateInfo;
-        } else {
-            @unlink($file);
         }
         $best = $candidateInfo;
     }
@@ -294,6 +306,9 @@ function spt_render_fit($templateDocx, array $settings, $targetPages = 1)
         $result['pages'] = $fallback['pages'];
         $result['docx'] = $fallback['file'];
         $result['ratio'] = $fallback['ratio'];
+        $purge($fallback['file']);
+    } else {
+        $purge(null);
     }
     return $result;
 }

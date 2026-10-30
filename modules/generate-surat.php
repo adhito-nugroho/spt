@@ -4178,13 +4178,15 @@ window.dispatchEvent(new Event('spt-pdfjs-ready'));
     async function renderAllPages() {
         if (!pdfDoc || !pdfPages) return;
         const seq = ++renderSeq;
+        const doc = pdfDoc;
         const scrollRatio = (pdfScroll && pdfScroll.scrollHeight) ? (pdfScroll.scrollTop / pdfScroll.scrollHeight) : 0;
         const dpr = Math.min(window.devicePixelRatio || 1, 2);
-        const total = pdfDoc.numPages;
+        const total = doc.numPages;
         pdfPages.replaceChildren();
         for (let n = 1; n <= total; n++) {
-            const page = await pdfDoc.getPage(n);
-            if (seq !== renderSeq) return;
+            if (seq !== renderSeq || doc !== pdfDoc) return;
+            const page = await doc.getPage(n);
+            if (seq !== renderSeq || doc !== pdfDoc) return;
             const unscaled = page.getViewport({ scale: 1 });
             const scale = basePageScale(unscaled) * zoomFactor;
             const viewport = page.getViewport({ scale: scale * dpr });
@@ -4197,12 +4199,25 @@ window.dispatchEvent(new Event('spt-pdfjs-ready'));
             holder.className = 'spt-pdf-page';
             holder.appendChild(canvas);
             pdfPages.appendChild(holder);
-            await page.render({ canvasContext: canvas.getContext('2d'), viewport: viewport }).promise;
-            if (seq !== renderSeq) return;
+            try {
+                await page.render({ canvasContext: canvas.getContext('2d'), viewport: viewport }).promise;
+            } catch (error) {
+                holder.remove();
+                return;
+            }
+            if (seq !== renderSeq || doc !== pdfDoc) {
+                holder.remove();
+                return;
+            }
         }
         if (viewerZoomLabel) viewerZoomLabel.textContent = Math.round(zoomFactor * 100) + '%';
         if (pdfScroll) pdfScroll.scrollTop = scrollRatio * pdfScroll.scrollHeight;
         currentPage = 1;
+        if (pdfScroll) {
+            Array.from(pdfPages.children).forEach(function (box, index) {
+                if (box.offsetTop - 24 <= pdfScroll.scrollTop) currentPage = index + 1;
+            });
+        }
         updatePageNav();
     }
 
@@ -4227,11 +4242,22 @@ window.dispatchEvent(new Event('spt-pdfjs-ready'));
             pdfDoc = await pdfLoadingTask.promise;
             currentPage = 1;
             setViewerMode(true);
-            await renderAllPages();
+            // Jangan biarkan overlay menggantung bila canvas tidak bisa menggambar
+            // (mis. tab tersembunyi): jatuh ke penampil PDF bawaan browser.
+            const renderTimeout = new Promise(function (_, reject) {
+                setTimeout(function () { reject(new Error('timeout')); }, 10000);
+            });
+            await Promise.race([renderAllPages(), renderTimeout]);
         } catch (error) {
             console.warn('pdf.js gagal, memakai iframe bawaan browser', error);
+            renderSeq++;
             pdfDoc = null;
+            if (pdfLoadingTask) {
+                try { pdfLoadingTask.destroy(); } catch (e) {}
+                pdfLoadingTask = null;
+            }
             setViewerMode(false);
+            updatePageNav();
             if (frame) frame.src = currentBlobUrl;
         }
     }
@@ -4616,6 +4642,7 @@ window.dispatchEvent(new Event('spt-pdfjs-ready'));
         resetBtn.addEventListener('click', function () {
             state = Object.assign({}, templateDefaults, { lock_ttd: templateDefaults.lock_ttd ? 1 : 0 });
             active = hasSavedDefault;
+            currentDensity = estimateDensity();
             try { localStorage.removeItem(STORAGE_KEY); } catch (e) {}
             syncUi();
             appliedState = Object.assign({}, state);
@@ -4881,6 +4908,10 @@ Settings::setTempDir($tempDir);
                     if ($layout_adjusted_docx) {
                         @unlink($layout_adjusted_docx);
                     }
+                    if ($fit_report !== null && !empty($fit_report['docx'])) {
+                        @unlink($fit_report['docx']);
+                        @rmdir(dirname($fit_report['docx']));
+                    }
                     $nextRetry = $comRetryCount + 1;
                     if (ob_get_length()) {
                         ob_clean();
@@ -5008,6 +5039,7 @@ Settings::setTempDir($tempDir);
                 readfile($tempPdf);
                 @unlink($tempPdf);
                 if ($fit_report !== null && !empty($fit_report['docx'])) {
+                    @unlink($fit_report['docx']);
                     @rmdir(dirname($fit_report['docx']));
                 }
                 if (function_exists('spt_render_word_quit')) {
@@ -5034,6 +5066,10 @@ Settings::setTempDir($tempDir);
     } catch (Exception $e) {
         if (file_exists($tempDocx)) @unlink($tempDocx);
         if ($layout_adjusted_docx && file_exists($layout_adjusted_docx)) @unlink($layout_adjusted_docx);
+        if ($fit_report !== null && !empty($fit_report['docx'])) {
+            @unlink($fit_report['docx']);
+            @rmdir(dirname($fit_report['docx']));
+        }
         throw $e;
     }
 
