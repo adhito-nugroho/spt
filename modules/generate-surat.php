@@ -3642,8 +3642,20 @@ main > .max-w-7xl { max-width: none !important; margin: 0 !important; height: 10
 .spt-viewer-zoom { min-width: 44px; text-align: center; font-variant-numeric: tabular-nums; }
 .spt-viewer-scroll { flex: 1 1 auto; min-height: 0; overflow: auto; background: #e8edf3; padding: 12px; scroll-behavior: auto; }
 .spt-pdf-pages { display: flex; flex-direction: column; align-items: center; gap: 12px; }
-.spt-pdf-page { background: #fff; box-shadow: 0 1px 3px rgba(15,23,42,.18), 0 8px 24px -18px rgba(15,23,42,.5); border-radius: 2px; }
+.spt-pdf-page { position: relative; background: #fff; box-shadow: 0 1px 3px rgba(15,23,42,.18), 0 8px 24px -18px rgba(15,23,42,.5); border-radius: 2px; }
 .spt-pdf-page canvas { display: block; }
+.spt-pdf-page .textLayer { position: absolute; inset: 0; overflow: hidden; line-height: 1; text-align: initial; text-size-adjust: none; forced-color-adjust: none; transform-origin: 0 0; caret-color: CanvasText; z-index: 1; opacity: 1; }
+.spt-pdf-page .textLayer :is(span, br) { color: transparent; position: absolute; white-space: pre; cursor: text; transform-origin: 0 0; }
+.spt-pdf-page .textLayer span.markedContent { top: 0; height: 0; }
+.spt-pdf-page .textLayer .highlight { margin: -1px; padding: 1px; background-color: rgba(180,0,170,.25); border-radius: 4px; }
+.spt-pdf-page .textLayer .highlight.begin { border-radius: 4px 0 0 4px; }
+.spt-pdf-page .textLayer .highlight.end { border-radius: 0 4px 4px 0; }
+.spt-pdf-page .textLayer .highlight.middle { border-radius: 0; }
+.spt-pdf-page .textLayer .highlight.selected { background-color: rgba(0,100,0,.25); }
+.spt-pdf-page .textLayer ::selection { background: rgba(0,0,255,.25); }
+.spt-pdf-page .textLayer br::selection { background: transparent; }
+.spt-pdf-page .textLayer .endOfContent { display: block; position: absolute; inset: 100% 0 0; z-index: -1; cursor: default; user-select: none; }
+.spt-pdf-page .textLayer.selecting .endOfContent { top: 0; }
 .spt-overlay { position: absolute; inset: 0; z-index: 10; display: flex; align-items: center; justify-content: center; background: rgba(255,255,255,.82); backdrop-filter: blur(2px); }
 .spt-spinner { width: 32px; height: 32px; border: 3px solid #059669; border-top-color: transparent; border-radius: 999px; animation: spt-spin .7s linear infinite; }
 .spt-resizer { flex: 0 0 5px; width: 5px; cursor: col-resize; background: transparent; position: relative; }
@@ -4492,21 +4504,38 @@ window.dispatchEvent(new Event('spt-pdfjs-ready'));
             if (seq !== renderSeq || doc !== pdfDoc) return;
             const unscaled = page.getViewport({ scale: 1 });
             const scale = basePageScale(unscaled) * zoomFactor;
-            const viewport = page.getViewport({ scale: scale * dpr });
+            const cssViewport = page.getViewport({ scale: scale });
+            const renderViewport = page.getViewport({ scale: scale * dpr });
             const canvas = document.createElement('canvas');
-            canvas.width = Math.floor(viewport.width);
-            canvas.height = Math.floor(viewport.height);
+            canvas.width = Math.floor(renderViewport.width);
+            canvas.height = Math.floor(renderViewport.height);
             canvas.style.width = Math.floor(unscaled.width * scale) + 'px';
             canvas.style.height = Math.floor(unscaled.height * scale) + 'px';
             const holder = document.createElement('div');
             holder.className = 'spt-pdf-page';
             holder.appendChild(canvas);
+            const textLayerDiv = document.createElement('div');
+            textLayerDiv.className = 'textLayer';
+            holder.appendChild(textLayerDiv);
             pdfPages.appendChild(holder);
             try {
-                await page.render({ canvasContext: canvas.getContext('2d'), viewport: viewport }).promise;
+                await page.render({ canvasContext: canvas.getContext('2d'), viewport: renderViewport }).promise;
             } catch (error) {
                 holder.remove();
                 return;
+            }
+            const lib = window.pdfjsLib;
+            if (lib && typeof lib.TextLayer === 'function') {
+                try {
+                    const textLayer = new lib.TextLayer({
+                        textContentSource: page.streamTextContent({ includeMarkedContent: true }),
+                        container: textLayerDiv,
+                        viewport: cssViewport
+                    });
+                    await textLayer.render();
+                } catch (error) {
+                    textLayerDiv.remove();
+                }
             }
             if (seq !== renderSeq || doc !== pdfDoc) {
                 holder.remove();
