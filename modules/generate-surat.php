@@ -4516,6 +4516,7 @@ window.dispatchEvent(new Event('spt-pdfjs-ready'));
             holder.appendChild(canvas);
             const textLayerDiv = document.createElement('div');
             textLayerDiv.className = 'textLayer';
+            textLayerDiv.style.setProperty('--scale-factor', scale);
             holder.appendChild(textLayerDiv);
             pdfPages.appendChild(holder);
             try {
