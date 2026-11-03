@@ -3647,12 +3647,12 @@ main > .max-w-7xl { max-width: none !important; margin: 0 !important; height: 10
 .spt-pdf-page .textLayer { position: absolute; inset: 0; overflow: hidden; line-height: 1; text-align: initial; text-size-adjust: none; forced-color-adjust: none; transform-origin: 0 0; caret-color: CanvasText; z-index: 1; opacity: 1; }
 .spt-pdf-page .textLayer :is(span, br) { color: transparent; position: absolute; white-space: pre; cursor: text; transform-origin: 0 0; }
 .spt-pdf-page .textLayer span.markedContent { top: 0; height: 0; }
-.spt-pdf-page .textLayer .highlight { margin: -1px; padding: 1px; background-color: rgba(180,0,170,.25); border-radius: 4px; }
+.spt-pdf-page .textLayer .highlight { margin: -1px; padding: 1px; background-color: rgba(236,72,153,.20); border-radius: 4px; }
 .spt-pdf-page .textLayer .highlight.begin { border-radius: 4px 0 0 4px; }
 .spt-pdf-page .textLayer .highlight.end { border-radius: 0 4px 4px 0; }
 .spt-pdf-page .textLayer .highlight.middle { border-radius: 0; }
-.spt-pdf-page .textLayer .highlight.selected { background-color: rgba(0,100,0,.25); }
-.spt-pdf-page .textLayer ::selection { background: rgba(0,0,255,.25); }
+.spt-pdf-page .textLayer .highlight.selected { background-color: rgba(219,39,119,.30); }
+.spt-pdf-page .textLayer ::selection { background: rgba(236,72,153,.35); }
 .spt-pdf-page .textLayer br::selection { background: transparent; }
 .spt-pdf-page .textLayer .endOfContent { display: block; position: absolute; inset: 100% 0 0; z-index: -1; cursor: default; user-select: none; }
 .spt-pdf-page .textLayer.selecting .endOfContent { top: 0; }
